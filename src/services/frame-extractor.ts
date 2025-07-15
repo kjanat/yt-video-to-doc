@@ -52,10 +52,27 @@ export class FrameExtractor {
           timestamps.push(i * interval);
         }
         
-        let processedFrames = 0;
+        // Monitor progress by checking file creation
+        const progressInterval = setInterval(async () => {
+          try {
+            const files = await fs.readdir(framesDir);
+            const frameFiles = files.filter(f => f.endsWith('.png'));
+            const processedFrames = frameFiles.length;
+            
+            if (onProgress && processedFrames > 0) {
+              const percent = Math.min((processedFrames / frameCount) * 100, 100);
+              // Map extraction progress from 25% to 40%
+              onProgress(25 + (percent / 100) * 15);
+            }
+          } catch (e) {
+            // Directory might not exist yet
+          }
+        }, 500); // Check every 500ms
         
         ffmpeg(videoPath)
           .on('end', async () => {
+            clearInterval(progressInterval);
+            
             // Read all extracted frames
             const files = await fs.readdir(framesDir);
             const frameFiles = files
@@ -79,16 +96,9 @@ export class FrameExtractor {
             resolve(frames);
           })
           .on('error', (err) => {
+            clearInterval(progressInterval);
             logger.error(`Frame extraction error: ${err.message}`);
             reject(err);
-          })
-          .on('progress', (progress) => {
-            processedFrames++;
-            if (onProgress) {
-              const percent = (processedFrames / frameCount) * 100;
-              // Map extraction progress from 25% to 40%
-              onProgress(25 + (percent / 100) * 15);
-            }
           })
           .screenshots({
             timestamps: timestamps,

@@ -156,12 +156,22 @@ export class YouTubeDownloader {
         for (const line of lines) {
           stdout += line + '\n';
           
-          // Parse download progress from yt-dlp output
-          const progressMatch = line.match(/\[download\]\s+(\d+\.?\d*)%/);
+          // Parse download progress from yt-dlp output - handle all stages
+          const progressMatch = line.match(/\[(\w+)\]\s+(\d+\.?\d*)%/);
           if (progressMatch && onProgress) {
-            const percent = parseFloat(progressMatch[1]);
-            // Map download progress from 10% to 25%
-            onProgress(10 + (percent / 100) * 15);
+            const stage = progressMatch[1];
+            const percent = parseFloat(progressMatch[2]);
+            
+            // For now, only track download stage to avoid confusion
+            if (stage === 'download') {
+              // Map download progress from 10% to 25%
+              onProgress(10 + (percent / 100) * 15);
+            }
+          }
+          
+          // Also check for completion messages
+          if (line.includes('[download] 100%') || line.includes('has already been downloaded')) {
+            if (onProgress) onProgress(25);
           }
         }
       });
