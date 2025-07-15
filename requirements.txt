@@ -1,0 +1,15 @@
+# System Dependencies for YouTube Video to Text Converter
+
+# Python dependencies (for yt-dlp)
+yt-dlp>=2023.12.30
+
+# OCR dependencies
+# Install Tesseract OCR:
+# Ubuntu/Debian: sudo apt-get install tesseract-ocr
+# macOS: brew install tesseract
+# Windows: Download from https://github.com/UB-Mannheim/tesseract/wiki
+
+# FFmpeg (for video processing)
+# Ubuntu/Debian: sudo apt-get install ffmpeg
+# macOS: brew install ffmpeg
+# Windows: Download from https://ffmpeg.org/download.html
