@@ -17,7 +17,8 @@ export class FrameExtractor {
 
   async extractFrames(
     videoPath: string, 
-    interval: number = 2
+    interval: number = 2,
+    onProgress?: (percent: number) => void
   ): Promise<Frame[]> {
     const framesDir = path.join(this.tempDir, 'frames', path.basename(videoPath, '.mp4'));
     await fs.mkdir(framesDir, { recursive: true });
@@ -51,6 +52,8 @@ export class FrameExtractor {
           timestamps.push(i * interval);
         }
         
+        let processedFrames = 0;
+        
         ffmpeg(videoPath)
           .on('end', async () => {
             // Read all extracted frames
@@ -72,11 +75,20 @@ export class FrameExtractor {
             }
 
             logger.info(`Extracted ${frames.length} frames`);
+            if (onProgress) onProgress(40); // Complete at 40%
             resolve(frames);
           })
           .on('error', (err) => {
             logger.error(`Frame extraction error: ${err.message}`);
             reject(err);
+          })
+          .on('progress', (progress) => {
+            processedFrames++;
+            if (onProgress) {
+              const percent = (processedFrames / frameCount) * 100;
+              // Map extraction progress from 25% to 40%
+              onProgress(25 + (percent / 100) * 15);
+            }
           })
           .screenshots({
             timestamps: timestamps,

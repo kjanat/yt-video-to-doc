@@ -52,14 +52,19 @@ export class VideoProcessor extends EventEmitter {
 
     try {
       // Download video
-      this.updateJobStatus(job, ProcessingStatus.DOWNLOADING, 10);
-      const { videoPath, metadata } = await this.downloader.downloadVideo(videoUrl);
+      this.updateJobStatus(job, ProcessingStatus.DOWNLOADING, 0);
+      const { videoPath, metadata } = await this.downloader.downloadVideo(videoUrl, (progress) => {
+        this.updateJobStatus(job, ProcessingStatus.DOWNLOADING, Math.round(progress));
+      });
       
       // Extract frames
       this.updateJobStatus(job, ProcessingStatus.EXTRACTING_FRAMES, 25);
       const frames = await this.frameExtractor.extractFrames(
         videoPath, 
-        this.options.frameInterval
+        this.options.frameInterval,
+        (progress) => {
+          this.updateJobStatus(job, ProcessingStatus.EXTRACTING_FRAMES, Math.round(progress));
+        }
       );
       
       // Detect slides
