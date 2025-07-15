@@ -27,43 +27,64 @@ export class FrameExtractor {
     return new Promise((resolve, reject) => {
       const frames: Frame[] = [];
       
-      ffmpeg(videoPath)
-        .on('end', async () => {
-          // Read all extracted frames
-          const files = await fs.readdir(framesDir);
-          const frameFiles = files
-            .filter(f => f.endsWith('.png'))
-            .sort((a, b) => {
-              const numA = parseInt(a.match(/frame-(\d+)/)?.[1] || '0');
-              const numB = parseInt(b.match(/frame-(\d+)/)?.[1] || '0');
-              return numA - numB;
-            });
-
-          for (const file of frameFiles) {
-            const frameNumber = parseInt(file.match(/frame-(\d+)/)?.[1] || '0');
-            frames.push({
-              timestamp: frameNumber * interval,
-              imagePath: path.join(framesDir, file),
-              frameNumber
-            });
-          }
-
-          logger.info(`Extracted ${frames.length} frames`);
-          resolve(frames);
-        })
-        .on('error', (err) => {
-          logger.error(`Frame extraction error: ${err.message}`);
+      // First get video duration to calculate frame count
+      ffmpeg.ffprobe(videoPath, async (err, metadata) => {
+        if (err) {
           reject(err);
-        })
-        .screenshots({
-          count: 999999, // Extract all frames at interval
-          filename: 'frame-%i.png',
-          folder: framesDir,
-          size: '1280x720' // Standardize frame size
-        })
-        .outputOptions([
-          `-vf fps=1/${interval}` // Extract one frame every N seconds
-        ]);
+          return;
+        }
+        
+        const duration = metadata.format.duration || 0;
+        const frameCount = Math.floor(duration / interval);
+        
+        if (frameCount === 0) {
+          logger.warn('Video too short for frame extraction');
+          resolve([]);
+          return;
+        }
+        
+        logger.info(`Video duration: ${duration}s, extracting ${frameCount} frames`);
+        
+        // Extract frames at specific timestamps
+        const timestamps: number[] = [];
+        for (let i = 0; i < frameCount; i++) {
+          timestamps.push(i * interval);
+        }
+        
+        ffmpeg(videoPath)
+          .on('end', async () => {
+            // Read all extracted frames
+            const files = await fs.readdir(framesDir);
+            const frameFiles = files
+              .filter(f => f.endsWith('.png'))
+              .sort((a, b) => {
+                const numA = parseInt(a.match(/frame-(\d+)/)?.[1] || '0');
+                const numB = parseInt(b.match(/frame-(\d+)/)?.[1] || '0');
+                return numA - numB;
+              });
+
+            for (let i = 0; i < frameFiles.length; i++) {
+              frames.push({
+                timestamp: timestamps[i] || i * interval,
+                imagePath: path.join(framesDir, frameFiles[i]),
+                frameNumber: i
+              });
+            }
+
+            logger.info(`Extracted ${frames.length} frames`);
+            resolve(frames);
+          })
+          .on('error', (err) => {
+            logger.error(`Frame extraction error: ${err.message}`);
+            reject(err);
+          })
+          .screenshots({
+            timestamps: timestamps,
+            filename: 'frame-%i.png',
+            folder: framesDir,
+            size: '1280x720' // Standardize frame size
+          });
+      });
     });
   }
 

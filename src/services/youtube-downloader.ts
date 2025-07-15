@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs/promises';
 import { VideoMetadata } from '../types';
@@ -7,9 +7,33 @@ import { v4 as uuidv4 } from 'uuid';
 
 export class YouTubeDownloader {
   private tempDir: string;
+  private ytDlpPath: string;
 
   constructor(tempDir: string) {
     this.tempDir = tempDir;
+    this.ytDlpPath = this.findYtDlp();
+  }
+
+  private findYtDlp(): string {
+    // Check for yt-dlp in common locations
+    const paths = [
+      process.env.HOME ? `${process.env.HOME}/.local/bin/yt-dlp` : '',
+      '/usr/local/bin/yt-dlp',
+      'yt-dlp'
+    ].filter(p => p);
+
+    for (const ytdlp of paths) {
+      try {
+        execSync(`which ${ytdlp}`, { stdio: 'ignore' });
+        const version = execSync(`${ytdlp} --version`, { encoding: 'utf8' }).trim();
+        logger.info(`Using yt-dlp at ${ytdlp} (version: ${version})`);
+        return ytdlp;
+      } catch (e) {
+        // Try next path
+      }
+    }
+    
+    throw new Error('yt-dlp not found. Please install it using: pip3 install --upgrade yt-dlp');
   }
 
   async downloadVideo(url: string): Promise<{ videoPath: string; metadata: VideoMetadata }> {
@@ -21,6 +45,11 @@ export class YouTubeDownloader {
 
     // First get video metadata
     const metadata = await this.getVideoMetadata(url);
+    
+    // Check video duration limit (10 minutes for PoC)
+    if (metadata.duration > 600) {
+      throw new Error(`Video too long: ${Math.floor(metadata.duration / 60)} minutes. This proof of concept supports videos up to 10 minutes.`);
+    }
     
     // Download video
     await this.executeYtDlp([
@@ -63,17 +92,32 @@ export class YouTubeDownloader {
       let stdout = '';
       let stderr = '';
 
-      const process = spawn('yt-dlp', args);
+      const childProcess = spawn(this.ytDlpPath, args);
 
-      process.stdout.on('data', (data) => {
+      // Kill child process if parent exits
+      const cleanup = () => {
+        if (!childProcess.killed) {
+          childProcess.kill('SIGTERM');
+        }
+      };
+      
+      process.once('exit', cleanup);
+      process.once('SIGINT', cleanup);
+      process.once('SIGTERM', cleanup);
+
+      childProcess.stdout.on('data', (data) => {
         stdout += data.toString();
       });
 
-      process.stderr.on('data', (data) => {
+      childProcess.stderr.on('data', (data) => {
         stderr += data.toString();
       });
 
-      process.on('close', (code) => {
+      childProcess.on('close', (code) => {
+        process.removeListener('exit', cleanup);
+        process.removeListener('SIGINT', cleanup);
+        process.removeListener('SIGTERM', cleanup);
+        
         if (code !== 0) {
           reject(new Error(`yt-dlp exited with code ${code}: ${stderr}`));
         } else {
@@ -81,7 +125,7 @@ export class YouTubeDownloader {
         }
       });
 
-      process.on('error', (err) => {
+      childProcess.on('error', (err) => {
         reject(new Error(`Failed to spawn yt-dlp: ${err.message}`));
       });
     });

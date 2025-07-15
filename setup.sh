@@ -27,11 +27,20 @@ echo ""
 echo "📋 Checking system dependencies..."
 
 # Check for yt-dlp
-if ! command -v yt-dlp &> /dev/null; then
+if ! command -v yt-dlp &> /dev/null && ! command -v ~/.local/bin/yt-dlp &> /dev/null; then
     echo "⚠️  yt-dlp not found. Installing..."
-    pip3 install yt-dlp
+    pip3 install --upgrade yt-dlp
 else
-    echo "✅ yt-dlp is installed"
+    # Check version
+    YT_DLP_CMD=$(command -v ~/.local/bin/yt-dlp || command -v yt-dlp)
+    YT_DLP_VERSION=$($YT_DLP_CMD --version 2>/dev/null || echo "unknown")
+    echo "✅ yt-dlp is installed (version: $YT_DLP_VERSION)"
+    
+    # Warn if version is old
+    if [[ "$YT_DLP_VERSION" < "2024" ]]; then
+        echo "⚠️  Your yt-dlp version is outdated. Updating..."
+        pip3 install --upgrade yt-dlp
+    fi
 fi
 
 # Check for Tesseract

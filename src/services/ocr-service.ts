@@ -19,10 +19,11 @@ export class OCRService {
     this.tempDir = tempDir;
   }
 
-  async processSlides(slides: Slide[]): Promise<Slide[]> {
+  async processSlides(slides: Slide[], onProgress?: (percent: number) => void): Promise<Slide[]> {
     logger.info(`Running OCR on ${slides.length} slides`);
     
-    for (const slide of slides) {
+    for (let i = 0; i < slides.length; i++) {
+      const slide = slides[i];
       const representativeFrame = this.getMostRepresentativeFrame(slide);
       
       // Preprocess image for better OCR results
@@ -40,6 +41,10 @@ export class OCRService {
       } finally {
         // Clean up processed image
         await this.cleanupTempFile(processedImagePath);
+      }
+      
+      if (onProgress) {
+        onProgress(60 + (i + 1) / slides.length * 25); // 60-85%
       }
     }
     

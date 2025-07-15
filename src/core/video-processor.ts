@@ -11,6 +11,7 @@ import {
 import { YouTubeDownloader } from '../services/youtube-downloader';
 import { FrameExtractor } from '../services/frame-extractor';
 import { SlideDetector } from '../services/slide-detector';
+import { AdvancedSlideDetector } from '../services/slide-detector-advanced';
 import { OCRService } from '../services/ocr-service';
 import { DocumentGenerator } from '../services/document-generator';
 import { DEFAULT_OPTIONS } from '../config/defaults';
@@ -20,7 +21,7 @@ export class VideoProcessor extends EventEmitter {
   private options: ProcessingOptions;
   private downloader: YouTubeDownloader;
   private frameExtractor: FrameExtractor;
-  private slideDetector: SlideDetector;
+  private slideDetector: SlideDetector | AdvancedSlideDetector;
   private ocrService: OCRService;
   private documentGenerator: DocumentGenerator;
 
@@ -31,7 +32,8 @@ export class VideoProcessor extends EventEmitter {
     // Initialize services
     this.downloader = new YouTubeDownloader(this.options.tempDir);
     this.frameExtractor = new FrameExtractor(this.options.tempDir);
-    this.slideDetector = new SlideDetector(this.options.slideDetectionThreshold);
+    // Use advanced slide detector for better detection
+    this.slideDetector = new AdvancedSlideDetector(this.options.slideDetectionThreshold);
     this.ocrService = new OCRService(this.options.ocrLanguage, this.options.tempDir);
     this.documentGenerator = new DocumentGenerator(this.options.outputDir);
   }
@@ -62,11 +64,15 @@ export class VideoProcessor extends EventEmitter {
       
       // Detect slides
       this.updateJobStatus(job, ProcessingStatus.DETECTING_SLIDES, 40);
-      const slides = await this.slideDetector.detectSlides(frames);
+      const slides = await this.slideDetector.detectSlides(frames, (progress) => {
+        this.updateJobStatus(job, ProcessingStatus.DETECTING_SLIDES, Math.round(progress));
+      });
       
       // Run OCR
       this.updateJobStatus(job, ProcessingStatus.RUNNING_OCR, 60);
-      const slidesWithText = await this.ocrService.processSlides(slides);
+      const slidesWithText = await this.ocrService.processSlides(slides, (progress) => {
+        this.updateJobStatus(job, ProcessingStatus.RUNNING_OCR, Math.round(progress));
+      });
       
       // Generate document
       this.updateJobStatus(job, ProcessingStatus.GENERATING_DOCUMENT, 85);

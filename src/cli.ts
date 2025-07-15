@@ -23,7 +23,7 @@ program
   .option('-i, --interval <seconds>', 'Frame extraction interval in seconds', '2')
   .option('-f, --format <format>', 'Output format (markdown|txt|pdf)', 'markdown')
   .option('-l, --language <lang>', 'OCR language code', 'eng')
-  .option('-t, --threshold <value>', 'Slide detection threshold (0-1)', '0.3')
+  .option('-t, --threshold <value>', 'Slide detection threshold (0-1)', '0.15')
   .option('-o, --output <dir>', 'Output directory', './output')
   .option('--temp <dir>', 'Temporary directory', './temp')
   .action(async (url: string, options: any) => {
@@ -80,6 +80,8 @@ program
           console.log(slide.primaryText.substring(0, 100) + '...\n');
         });
       }
+      
+      process.exit(0);
 
     } catch (error) {
       spinner.fail('Processing failed');
@@ -102,9 +104,11 @@ program
       await fs.rm(logsDir, { recursive: true, force: true });
       
       spinner.succeed('Cleanup completed');
+      process.exit(0);
     } catch (error) {
       spinner.fail('Cleanup failed');
       console.error(chalk.red('Error:'), error);
+      process.exit(1);
     }
   });
 
@@ -128,9 +132,11 @@ program
       const result = await processor.processVideo(testUrl);
       spinner.succeed('Test completed successfully!');
       console.log(chalk.green(`\nOutput saved to: ${result.outputPath}`));
+      process.exit(0);
     } catch (error) {
       spinner.fail('Test failed');
       console.error(chalk.red('Error:'), error);
+      process.exit(1);
     }
   });
 
@@ -166,3 +172,20 @@ program.parse(process.argv);
 if (!process.argv.slice(2).length) {
   program.outputHelp();
 }
+
+// Ensure process exits cleanly
+process.on('unhandledRejection', (err) => {
+  console.error(chalk.red('Unhandled error:'), err);
+  process.exit(1);
+});
+
+// Handle Ctrl+C gracefully
+process.on('SIGINT', () => {
+  console.log(chalk.yellow('\n\nInterrupted by user'));
+  process.exit(130); // Standard exit code for SIGINT
+});
+
+process.on('SIGTERM', () => {
+  console.log(chalk.yellow('\n\nTerminated'));
+  process.exit(143); // Standard exit code for SIGTERM
+});
