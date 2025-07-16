@@ -54,7 +54,7 @@ export class YouTubeDownloader {
 		onProgress?: (percent: number) => void,
 	): Promise<{ videoPath: string; metadata: VideoMetadata }> {
 		// Ensure yt-dlp is available
-		const ytDlpPath = await this.ensureYtDlp();
+		await this.ensureYtDlp();
 		
 		const jobId = uuidv4();
 		const outputPath = path.join(this.tempDir, `${jobId}.mp4`);
@@ -98,7 +98,7 @@ export class YouTubeDownloader {
 	}
 
 	private async getVideoMetadata(url: string): Promise<VideoMetadata> {
-		const ytDlpPath = await this.ensureYtDlp();
+		await this.ensureYtDlp();
 		const output = await this.executeYtDlp([
 			url,
 			"--dump-json",

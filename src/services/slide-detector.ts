@@ -1,5 +1,6 @@
 import { diff, Jimp } from "jimp";
 import type { Frame, Slide } from "../types";
+import type { JimpInstance } from "../types/jimp";
 import logger from "../utils/logger";
 
 export class SlideDetector {
@@ -97,7 +98,7 @@ export class SlideDetector {
 			img2.resize({ w: width, h: height });
 
 			// Method 1: Pixel difference
-			const pixelDiff = diff(img1 as any, img2 as any).percent;
+			const pixelDiff = diff(img1, img2).percent;
 
 			// Method 2: Histogram difference
 			const histDiff = this.compareHistograms(img1, img2);
@@ -115,7 +116,7 @@ export class SlideDetector {
 		}
 	}
 
-	private compareHistograms(img1: any, img2: any): number {
+	private compareHistograms(img1: JimpInstance, img2: JimpInstance): number {
 		const hist1 = this.calculateHistogram(img1);
 		const hist2 = this.calculateHistogram(img2);
 
@@ -131,7 +132,7 @@ export class SlideDetector {
 		return Math.min(distance / 100, 1);
 	}
 
-	private calculateHistogram(img: any): number[] {
+	private calculateHistogram(img: JimpInstance): number[] {
 		const histogram = new Array(this.histogramBins * 3).fill(0);
 		const binSize = 256 / this.histogramBins;
 
@@ -160,7 +161,7 @@ export class SlideDetector {
 		return histogram.map((count) => count / totalPixels);
 	}
 
-	private async compareEdges(img1: any, img2: any): Promise<number> {
+	private async compareEdges(img1: JimpInstance, img2: JimpInstance): Promise<number> {
 		// Simplified edge detection using grayscale gradient
 		const gray1 = img1.clone().greyscale();
 		const gray2 = img2.clone().greyscale();
@@ -181,7 +182,7 @@ export class SlideDetector {
 		return Math.min(edgeDiff / pixelCount / 255, 1);
 	}
 
-	private getEdgeStrength(img: any, x: number, y: number): number {
+	private getEdgeStrength(img: JimpInstance, x: number, y: number): number {
 		const getPixel = (px: number, py: number) => {
 			const idx = (py * img.bitmap.width + px) * 4;
 			return img.bitmap.data[idx];
@@ -202,7 +203,6 @@ export class SlideDetector {
 		const percentile25 = sortedDiffs[Math.floor(sortedDiffs.length * 0.25)];
 		const percentile50 = sortedDiffs[Math.floor(sortedDiffs.length * 0.5)];
 		const percentile75 = sortedDiffs[Math.floor(sortedDiffs.length * 0.75)];
-		const _percentile90 = sortedDiffs[Math.floor(sortedDiffs.length * 0.9)];
 
 		// Calculate mean and standard deviation
 		const mean = differences.reduce((a, b) => a + b, 0) / differences.length;

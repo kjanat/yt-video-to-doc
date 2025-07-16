@@ -60,6 +60,9 @@ importers:
       '@vitest/ui':
         specifier: ^3.2.4
         version: 3.2.4(vitest@3.2.4)
+      ntypescript:
+        specifier: 1.201706190042.1
+        version: 1.201706190042.1
       tsx:
         specifier: ^4.20.3
         version: 4.20.3
@@ -1094,6 +1097,10 @@ packages:
   node-tesseract-ocr@2.2.1:
     resolution: {integrity: sha512-Q9cD79JGpPNQBxbi1fV+OAsTxYKLpx22sagsxSyKbu1u+t6UarApf5m32uVc8a5QAP1Wk7fIPN0aJFGGEE9DyQ==}
     engines: {node: '>=10'}
+
+  ntypescript@1.201706190042.1:
+    resolution: {integrity: sha512-8I6UIASspQtJTJfjDYmib8TshHE039pSsmR41aGIVkZWgSIxo2Rf5z2wyDMBzU04sq+BrAAJudHUGhMYec/WiA==}
+    hasBin: true
 
   omggif@1.0.10:
     resolution: {integrity: sha512-LMJTtvgc/nugXj0Vcrrs68Mn2D1r0zf630VNtqtpI1FEO7e+O9FP4gqs9AcnBaSEeoHIPm28u6qgPR0oyEpGSw==}
@@ -2464,6 +2471,8 @@ snapshots:
   nanoid@3.3.11: {}
 
   node-tesseract-ocr@2.2.1: {}
+
+  ntypescript@1.201706190042.1: {}
 
   omggif@1.0.10: {}
 
