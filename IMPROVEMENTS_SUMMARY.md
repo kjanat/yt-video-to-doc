@@ -118,20 +118,20 @@ This document summarizes the comprehensive improvements made to the YouTube Vide
 3. Run type checking:
 
     ```bash
-    npm run typecheck
+    pnpm run typecheck
     ```
 
 4. Run linting:
 
     ```bash
-    npx @biomejs/biome check ./src
+    pnpm exec biome check ./src
     ```
 
 5. Build and run:
 
     ```bash
-    npm run build
-    npm start convert <youtube-url>
+    pnpm run build
+    pnpm start convert <youtube-url>
     ```
 
 ## Conclusion
