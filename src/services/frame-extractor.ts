@@ -1,7 +1,8 @@
-import { execSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
+import { SafeCommandExecutor } from "../utils/safe-command-executor";
 import {
 	PROGRESS_EXTRACT_END,
 	PROGRESS_EXTRACT_START,
@@ -101,7 +102,7 @@ export class FrameExtractor {
 				path.join(outputDir, "frame-%d.png"),
 			];
 
-			const ffmpegProcess = spawn(this.ffmpegPath, args);
+			const ffmpegProcess = spawn(this.ffmpegPath, args, { shell: false });
 
 			let stderr = "";
 			let lastProgress = 0;
@@ -156,12 +157,18 @@ export class FrameExtractor {
 		try {
 			// Use ffprobe to get video duration
 			const ffprobePath = this.ffmpegPath.replace("ffmpeg", "ffprobe");
-			const output = execSync(
-				`"${ffprobePath}" -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${videoPath}"`,
-				{ encoding: "utf8" },
-			);
+			const result = await SafeCommandExecutor.execute(ffprobePath, [
+				"-v", "error",
+				"-show_entries", "format=duration",
+				"-of", "default=noprint_wrappers=1:nokey=1",
+				videoPath
+			]);
 
-			const duration = parseFloat(output.trim());
+			if (result.exitCode !== 0) {
+				throw new Error(`ffprobe failed: ${result.stderr}`);
+			}
+
+			const duration = parseFloat(result.stdout.trim());
 			if (Number.isNaN(duration)) {
 				throw new Error("Failed to parse video duration");
 			}

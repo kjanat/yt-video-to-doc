@@ -1,7 +1,8 @@
-import { execSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { v4 as uuidv4 } from "uuid";
+import { SafeCommandExecutor } from "../utils/safe-command-executor";
 import {
 	MAX_VIDEO_DURATION_MINUTES,
 	MAX_VIDEO_DURATION_SECONDS,
@@ -14,14 +15,20 @@ import logger from "../utils/logger";
 
 export class YouTubeDownloader {
 	private tempDir: string;
-	private ytDlpPath: string;
+	private ytDlpPath: string | null = null;
 
 	constructor(tempDir: string) {
 		this.tempDir = tempDir;
-		this.ytDlpPath = this.findYtDlp();
 	}
 
-	private findYtDlp(): string {
+	private async ensureYtDlp(): Promise<string> {
+		if (!this.ytDlpPath) {
+			this.ytDlpPath = await this.findYtDlp();
+		}
+		return this.ytDlpPath;
+	}
+
+	private async findYtDlp(): Promise<string> {
 		// Check for yt-dlp in common locations
 		const paths = [
 			process.env.HOME ? `${process.env.HOME}/.local/bin/yt-dlp` : "",
@@ -30,15 +37,10 @@ export class YouTubeDownloader {
 		].filter((p) => p);
 
 		for (const ytdlp of paths) {
-			try {
-				execSync(`which ${ytdlp}`, { stdio: "ignore" });
-				const version = execSync(`${ytdlp} --version`, {
-					encoding: "utf8",
-				}).trim();
-				logger.info(`Using yt-dlp at ${ytdlp} (version: ${version})`);
+			if (await SafeCommandExecutor.commandExists(ytdlp)) {
+				const version = await SafeCommandExecutor.getCommandVersion(ytdlp);
+				logger.info(`Using yt-dlp at ${ytdlp} (version: ${version || "unknown"})`);
 				return ytdlp;
-			} catch (_e) {
-				// Try next path
 			}
 		}
 
@@ -51,6 +53,9 @@ export class YouTubeDownloader {
 		url: string,
 		onProgress?: (percent: number) => void,
 	): Promise<{ videoPath: string; metadata: VideoMetadata }> {
+		// Ensure yt-dlp is available
+		const ytDlpPath = await this.ensureYtDlp();
+		
 		const jobId = uuidv4();
 		const outputPath = path.join(this.tempDir, `${jobId}.mp4`);
 
@@ -93,6 +98,7 @@ export class YouTubeDownloader {
 	}
 
 	private async getVideoMetadata(url: string): Promise<VideoMetadata> {
+		const ytDlpPath = await this.ensureYtDlp();
 		const output = await this.executeYtDlp([
 			url,
 			"--dump-json",
@@ -110,15 +116,17 @@ export class YouTubeDownloader {
 		};
 	}
 
-	private executeYtDlp(args: string[]): Promise<string> {
-		return this.executeYtDlpInternal(args);
+	private async executeYtDlp(args: string[]): Promise<string> {
+		const ytDlpPath = await this.ensureYtDlp();
+		return this.executeYtDlpInternal(ytDlpPath, args);
 	}
 
-	private executeYtDlpWithProgress(
+	private async executeYtDlpWithProgress(
 		args: string[],
 		onProgress?: (percent: number) => void,
 	): Promise<string> {
-		return this.executeYtDlpInternal(args, (line) => {
+		const ytDlpPath = await this.ensureYtDlp();
+		return this.executeYtDlpInternal(ytDlpPath, args, (line) => {
 			// Parse download progress from yt-dlp output - handle all stages
 			const progressMatch = line.match(/\[(\w+)\]\s+(\d+\.?\d*)%/);
 			if (progressMatch && onProgress) {
@@ -144,6 +152,7 @@ export class YouTubeDownloader {
 	}
 
 	private executeYtDlpInternal(
+		ytDlpPath: string,
 		args: string[],
 		onLine?: (line: string) => void,
 	): Promise<string> {
@@ -151,7 +160,7 @@ export class YouTubeDownloader {
 			let stdout = "";
 			let stderr = "";
 
-			const childProcess = spawn(this.ytDlpPath, args);
+			const childProcess = spawn(ytDlpPath, args, { shell: false });
 
 			// Kill child process if parent exits
 			const cleanup = () => {
