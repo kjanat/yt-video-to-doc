@@ -2,13 +2,6 @@ import { diff, Jimp } from "jimp";
 import type { Frame, Slide } from "../types";
 import logger from "../utils/logger";
 
-interface SlideCandidate {
-	startIndex: number;
-	endIndex: number;
-	frames: Frame[];
-	averageDifference: number;
-}
-
 export class AdvancedSlideDetector {
 	private threshold: number;
 	private minSlideFrames: number;
@@ -104,7 +97,7 @@ export class AdvancedSlideDetector {
 			img2.resize({ w: width, h: height });
 
 			// Method 1: Pixel difference
-			const pixelDiff = diff(img1, img2).percent;
+			const pixelDiff = diff(img1 as any, img2 as any).percent;
 
 			// Method 2: Histogram difference
 			const histDiff = this.compareHistograms(img1, img2);

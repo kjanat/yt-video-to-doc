@@ -2,12 +2,15 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Jimp } from "jimp";
 import tesseract from "node-tesseract-ocr";
+import pLimit from "p-limit";
 import { OCR_CONFIG } from "../config/defaults";
+import { env } from "../config/env";
 import type { Frame, OCRResult, Slide } from "../types";
 import logger from "../utils/logger";
+import { withRetry } from "../utils/retry";
 
 export class OCRService {
-	private config: any;
+	private config: tesseract.Config;
 	private tempDir: string;
 
 	constructor(language: string = "eng", tempDir: string) {
@@ -23,42 +26,82 @@ export class OCRService {
 		slides: Slide[],
 		onProgress?: (percent: number) => void,
 	): Promise<Slide[]> {
-		logger.info(`Running OCR on ${slides.length} slides`);
+		logger.info(
+			`Running OCR on ${slides.length} slides with ${env.MAX_CONCURRENT_OCR} concurrent workers`,
+		);
 
-		for (let i = 0; i < slides.length; i++) {
-			const slide = slides[i];
-			const representativeFrame = this.getMostRepresentativeFrame(slide);
+		// Create a concurrency limiter
+		const limit = pLimit(env.MAX_CONCURRENT_OCR);
+		let processedCount = 0;
 
-			// Preprocess image for better OCR results
-			const processedImagePath = await this.preprocessImage(
-				representativeFrame.imagePath,
-			);
+		// Process all slides in parallel with concurrency limit
+		const processingPromises = slides.map((slide) =>
+			limit(async () => {
+				try {
+					await this.processSlide(slide);
+					processedCount++;
 
-			try {
-				const ocrResult = await this.extractText(
-					processedImagePath,
-					representativeFrame,
-				);
+					// Update progress
+					if (onProgress) {
+						const progress = 60 + (processedCount / slides.length) * 25; // 60-85%
+						onProgress(progress);
+					}
+				} catch (error) {
+					logger.error(`OCR failed for slide at ${slide.startTime}s:`, error);
+					// Continue processing other slides even if one fails
+				}
+			}),
+		);
 
-				slide.ocrResults.push(ocrResult);
-				slide.primaryText = ocrResult.text;
+		// Wait for all OCR operations to complete
+		await Promise.all(processingPromises);
 
-				logger.debug(
-					`OCR completed for slide at ${slide.startTime}s: ${ocrResult.text.substring(0, 50)}...`,
-				);
-			} catch (error) {
-				logger.error(`OCR failed for slide at ${slide.startTime}s: ${error}`);
-			} finally {
-				// Clean up processed image
-				await this.cleanupTempFile(processedImagePath);
-			}
-
-			if (onProgress) {
-				onProgress(60 + ((i + 1) / slides.length) * 25); // 60-85%
-			}
-		}
-
+		logger.info(`OCR processing completed for ${slides.length} slides`);
 		return slides;
+	}
+
+	private async processSlide(slide: Slide): Promise<void> {
+		const representativeFrame = this.getMostRepresentativeFrame(slide);
+
+		// Use retry mechanism for OCR processing
+		await withRetry(
+			async () => {
+				// Preprocess image for better OCR results
+				const processedImagePath = await this.preprocessImage(
+					representativeFrame.imagePath,
+				);
+
+				try {
+					const ocrResult = await this.extractText(
+						processedImagePath,
+						representativeFrame,
+					);
+
+					slide.ocrResults.push(ocrResult);
+					slide.primaryText = ocrResult.text;
+
+					logger.debug(
+						`OCR completed for slide at ${slide.startTime}s: ${ocrResult.text.substring(0, 50)}...`,
+					);
+				} finally {
+					// Clean up processed image
+					await this.cleanupTempFile(processedImagePath);
+				}
+			},
+			{
+				maxRetries: 2,
+				retryDelay: 1000,
+				shouldRetry: (error) => {
+					// Retry on temporary failures
+					const message = error.message.toLowerCase();
+					return (
+						message.includes("timeout") ||
+						message.includes("temporary") ||
+						message.includes("enoent")
+					);
+				},
+			},
+		);
 	}
 
 	private async extractText(
@@ -91,9 +134,12 @@ export class OCRService {
 
 	private async preprocessImage(imagePath: string): Promise<string> {
 		const image = await Jimp.read(imagePath);
+		// Add timestamp to prevent filename collisions in parallel processing
+		const timestamp = Date.now();
+		const randomId = Math.random().toString(36).substring(7);
 		const processedPath = path.join(
 			this.tempDir,
-			`processed_${path.basename(imagePath)}`,
+			`processed_${timestamp}_${randomId}_${path.basename(imagePath)}`,
 		);
 
 		// Image preprocessing for better OCR
@@ -118,5 +164,14 @@ export class OCRService {
 		} catch (error) {
 			logger.error(`Failed to cleanup temp file ${filePath}: ${error}`);
 		}
+	}
+
+	async processImage(imagePath: string): Promise<OCRResult> {
+		const frame: Frame = {
+			imagePath,
+			timestamp: 0,
+			frameNumber: 0,
+		};
+		return this.extractText(imagePath, frame);
 	}
 }
