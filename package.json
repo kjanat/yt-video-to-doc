@@ -2,13 +2,16 @@
 	"name": "yt-video-to-txt",
 	"version": "0.1.0",
 	"description": "YouTube video to document converter",
+	"author": "Kaj Kowalski",
+	"license": "MIT",
 	"main": "dist/index.js",
 	"scripts": {
 		"build": "tsc",
 		"dev": "tsx src/cli.ts",
 		"start": "node dist/cli.js",
-		"test": "vitest",
+		"test": "vitest run",
 		"test:ui": "vitest --ui",
+        "test:watch": "vitest watch",
 		"test:coverage": "vitest --coverage",
 		"typecheck": "tsc --noEmit"
 	},
@@ -19,8 +22,6 @@
 		"document",
 		"converter"
 	],
-	"author": "Kaj Kowalski",
-	"license": "MIT",
 	"dependencies": {
 		"@ffmpeg-installer/ffmpeg": "^1.1.0",
 		"axios": "^1.10.0",
@@ -36,7 +37,7 @@
 		"zod": "^4.0.5"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.1.1",
+		"@biomejs/biome": "^2.1.1",
 		"@types/node": "^24.0.14",
 		"@types/uuid": "^10.0.0",
 		"@vitest/coverage-v8": "^3.2.4",
