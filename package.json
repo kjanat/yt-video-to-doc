@@ -9,11 +9,18 @@
 		"build": "tsc",
 		"dev": "tsx src/cli.ts",
 		"start": "node dist/cli.js",
+		"lint": "biome check",
+		"lint:fix": "biome check --write",
+		"lint:summary": "biome check --reporter=summary",
+		"format": "biome format --write",
+		"format:check": "biome format",
 		"test": "vitest run",
 		"test:ui": "vitest --ui",
 		"test:watch": "vitest watch",
 		"test:coverage": "vitest --coverage",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+		"ci:lint:github": "biome ci --reporter=github",
+		"ci:lint:junit": "biome ci --reporter=junit"
 	},
 	"keywords": [
 		"youtube",

@@ -116,19 +116,39 @@ export class SlideDetector {
 		}
 	}
 
+	/**
+	 * Compares two images using chi-squared histogram comparison
+	 *
+	 * Chi-squared distance is a statistical method for comparing color distributions:
+	 * - Creates color histograms (frequency distributions) for RGB channels
+	 * - Measures how different the distributions are between two images
+	 * - Formula: χ² = Σ((hist1[i] - hist2[i])² / (hist1[i] + hist2[i]))
+	 *
+	 * Why it's effective for slide detection:
+	 * - Detects changes even when pixels move but colors remain similar (animations)
+	 * - Robust against minor variations in the same slide
+	 * - Captures overall color composition changes between different slides
+	 * - Works well for presentation slides which often have distinct color schemes
+	 *
+	 * @returns Normalized distance between 0-1 (0 = identical, 1 = completely different)
+	 */
 	private compareHistograms(img1: JimpInstance, img2: JimpInstance): number {
 		const hist1 = this.calculateHistogram(img1);
 		const hist2 = this.calculateHistogram(img2);
 
 		// Calculate chi-squared distance
+		// χ² = Σ((observed - expected)² / expected)
+		// In our case: χ² = Σ((hist1[i] - hist2[i])² / (hist1[i] + hist2[i]))
 		let distance = 0;
 		for (let i = 0; i < hist1.length; i++) {
 			if (hist1[i] + hist2[i] > 0) {
+				// Avoid division by zero when both bins are empty
 				distance += (hist1[i] - hist2[i]) ** 2 / (hist1[i] + hist2[i]);
 			}
 		}
 
 		// Normalize to 0-1 range
+		// The divisor 100 is empirically chosen based on typical chi-squared values
 		return Math.min(distance / 100, 1);
 	}
 
@@ -161,7 +181,10 @@ export class SlideDetector {
 		return histogram.map((count) => count / totalPixels);
 	}
 
-	private async compareEdges(img1: JimpInstance, img2: JimpInstance): Promise<number> {
+	private async compareEdges(
+		img1: JimpInstance,
+		img2: JimpInstance,
+	): Promise<number> {
 		// Simplified edge detection using grayscale gradient
 		const gray1 = img1.clone().greyscale();
 		const gray2 = img2.clone().greyscale();

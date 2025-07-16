@@ -2,13 +2,13 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
-import { SafeCommandExecutor } from "../utils/safe-command-executor";
 import {
 	PROGRESS_EXTRACT_END,
 	PROGRESS_EXTRACT_START,
 } from "../config/constants";
 import type { Frame } from "../types";
 import logger from "../utils/logger";
+import { SafeCommandExecutor } from "../utils/safe-command-executor";
 
 export class FrameExtractor {
 	private tempDir: string;
@@ -158,10 +158,13 @@ export class FrameExtractor {
 			// Use ffprobe to get video duration
 			const ffprobePath = this.ffmpegPath.replace("ffmpeg", "ffprobe");
 			const result = await SafeCommandExecutor.execute(ffprobePath, [
-				"-v", "error",
-				"-show_entries", "format=duration",
-				"-of", "default=noprint_wrappers=1:nokey=1",
-				videoPath
+				"-v",
+				"error",
+				"-show_entries",
+				"format=duration",
+				"-of",
+				"default=noprint_wrappers=1:nokey=1",
+				videoPath,
 			]);
 
 			if (result.exitCode !== 0) {

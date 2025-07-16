@@ -452,6 +452,13 @@ export interface EnvironmentRequirement {
 
 const REQUIRED_TOOLS: EnvironmentRequirement[] = [
 	{
+		name: "yt-dlp",
+		versionFlag: "--version",
+		versionPattern: /(\d{4}\.\d{2}\.\d{2})/,
+		minVersion: "2023.01.01",
+		message: "yt-dlp 2023.01.01+ is required for YouTube video downloading",
+	},
+	{
 		name: "ffmpeg",
 		versionFlag: "-version",
 		versionPattern: /ffmpeg version (\d+\.\d+)/,
@@ -473,6 +480,7 @@ const REQUIRED_TOOLS: EnvironmentRequirement[] = [
  */
 export async function validateEnvironment(
 	commandExists?: (cmd: string) => Promise<boolean>,
+	getCommandVersion?: (cmd: string) => Promise<string | null>,
 ): Promise<void> {
 	const errors: string[] = [];
 
@@ -483,17 +491,29 @@ export async function validateEnvironment(
 				const exists = await commandExists(tool.command || tool.name);
 				if (!exists) {
 					errors.push(tool.message);
+					continue;
 				}
 			} else {
 				// Fallback to basic check
 				console.log(`Checking for ${tool.name}...`);
 			}
 
-			// TODO: Add version checking here when integrated with SafeCommandExecutor
-			// const version = await getToolVersion(tool);
-			// if (!meetsMinVersion(version, tool.minVersion)) {
-			//     errors.push(`${tool.name} version ${version} is too old. ${tool.message}`);
-			// }
+			// Check version if getCommandVersion is provided
+			if (getCommandVersion && tool.versionPattern && tool.minVersion) {
+				const versionOutput = await getCommandVersion(
+					tool.command || tool.name,
+				);
+				if (versionOutput) {
+					const match = versionOutput.match(tool.versionPattern);
+					if (match?.[1]) {
+						if (!compareVersions(match[1], tool.minVersion)) {
+							errors.push(
+								`${tool.name} version ${match[1]} is too old. ${tool.message}`,
+							);
+						}
+					}
+				}
+			}
 		} catch {
 			errors.push(tool.message);
 		}
@@ -504,6 +524,74 @@ export async function validateEnvironment(
 			`Environment validation failed:\n  - ${errors.join("\n  - ")}`,
 		);
 	}
+}
+
+/**
+ * Version Comparison Utilities
+ */
+
+/**
+ * Parses a version string into major, minor, and optional patch numbers
+ * Examples: "4.2.1" -> { major: 4, minor: 2, patch: 1 }
+ *           "5.0" -> { major: 5, minor: 0 }
+ */
+export function parseVersion(
+	versionString: string,
+): { major: number; minor: number; patch?: number } | null {
+	// Extract just the version numbers, ignoring any prefix/suffix
+	const versionMatch = versionString.match(/(\d+)\.(\d+)(?:\.(\d+))?/);
+	if (!versionMatch) {
+		return null;
+	}
+
+	const major = parseInt(versionMatch[1], 10);
+	const minor = parseInt(versionMatch[2], 10);
+	const patch = versionMatch[3] ? parseInt(versionMatch[3], 10) : undefined;
+
+	return { major, minor, patch };
+}
+
+/**
+ * Compares two version strings to check if version >= minVersion
+ * Supports both semantic versioning and date-based versioning (for yt-dlp)
+ * Examples:
+ *   compareVersions("4.2.1", "4.0") -> true
+ *   compareVersions("3.9", "4.0") -> false
+ *   compareVersions("4.0.1", "4.0") -> true
+ *   compareVersions("2025.06.30", "2023.01.01") -> true
+ */
+export function compareVersions(version: string, minVersion: string): boolean {
+	// Check if it's date-based versioning (YYYY.MM.DD format)
+	const datePattern = /^\d{4}\.\d{2}\.\d{2}$/;
+	if (datePattern.test(version) && datePattern.test(minVersion)) {
+		// For date versions, simple string comparison works due to the format
+		return version >= minVersion;
+	}
+
+	// Otherwise, use semantic versioning comparison
+	const v1 = parseVersion(version);
+	const v2 = parseVersion(minVersion);
+
+	if (!v1 || !v2) {
+		return false;
+	}
+
+	// Compare major version
+	if (v1.major > v2.major) return true;
+	if (v1.major < v2.major) return false;
+
+	// Major versions are equal, compare minor
+	if (v1.minor > v2.minor) return true;
+	if (v1.minor < v2.minor) return false;
+
+	// Major and minor are equal, compare patch if both have it
+	if (v1.patch !== undefined && v2.patch !== undefined) {
+		return v1.patch >= v2.patch;
+	}
+
+	// If only one has a patch version, the one with patch is considered newer
+	// e.g., "4.0.1" >= "4.0" is true
+	return true;
 }
 
 /**

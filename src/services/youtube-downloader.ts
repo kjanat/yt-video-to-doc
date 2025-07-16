@@ -2,7 +2,6 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { v4 as uuidv4 } from "uuid";
-import { SafeCommandExecutor } from "../utils/safe-command-executor";
 import {
 	MAX_VIDEO_DURATION_MINUTES,
 	MAX_VIDEO_DURATION_SECONDS,
@@ -12,6 +11,7 @@ import {
 } from "../config/constants";
 import type { VideoMetadata } from "../types";
 import logger from "../utils/logger";
+import { SafeCommandExecutor } from "../utils/safe-command-executor";
 
 export class YouTubeDownloader {
 	private tempDir: string;
@@ -39,13 +39,15 @@ export class YouTubeDownloader {
 		for (const ytdlp of paths) {
 			if (await SafeCommandExecutor.commandExists(ytdlp)) {
 				const version = await SafeCommandExecutor.getCommandVersion(ytdlp);
-				logger.info(`Using yt-dlp at ${ytdlp} (version: ${version || "unknown"})`);
+				logger.info(
+					`Using yt-dlp at ${ytdlp} (version: ${version || "unknown"})`,
+				);
 				return ytdlp;
 			}
 		}
 
 		throw new Error(
-			"yt-dlp not found. Please install it using: pip3 install --upgrade yt-dlp",
+			"yt-dlp not found. Please install it using: pip install --upgrade yt-dlp",
 		);
 	}
 
@@ -55,7 +57,7 @@ export class YouTubeDownloader {
 	): Promise<{ videoPath: string; metadata: VideoMetadata }> {
 		// Ensure yt-dlp is available
 		await this.ensureYtDlp();
-		
+
 		const jobId = uuidv4();
 		const outputPath = path.join(this.tempDir, `${jobId}.mp4`);
 

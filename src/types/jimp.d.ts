@@ -18,7 +18,7 @@ declare module "jimp" {
 			y: number,
 			w: number,
 			h: number,
-			callback: (x: number, y: number, idx: number) => void
+			callback: (x: number, y: number, idx: number) => void,
 		): void;
 		clone(): Jimp;
 		greyscale(): Jimp;

@@ -47,7 +47,7 @@ export class VideoProcessor extends EventEmitter {
 		);
 		this.documentGenerator = new DocumentGenerator(this.options.outputDir);
 		this.cleanupService = new CleanupService(this.options.tempDir);
-		
+
 		// Run startup cleanup
 		this.cleanupService.runStartupCleanup().catch((error: unknown) => {
 			logger.warn(`Startup cleanup failed: ${error}`);
@@ -174,12 +174,14 @@ export class VideoProcessor extends EventEmitter {
 
 			// Cleanup
 			await this.cleanup(videoPath, frames[0]?.imagePath);
-			
+
 			// Unregister job and clean up files
 			this.cleanupService.unregisterJob(job.id);
-			await this.cleanupService.cleanJobFiles(job.id).catch((error: unknown) => {
-				logger.warn(`Failed to cleanup job files after success: ${error}`);
-			});
+			await this.cleanupService
+				.cleanJobFiles(job.id)
+				.catch((error: unknown) => {
+					logger.warn(`Failed to cleanup job files after success: ${error}`);
+				});
 
 			const result: ProcessingResult = {
 				videoMetadata: metadata,
@@ -213,11 +215,13 @@ export class VideoProcessor extends EventEmitter {
 
 			// Ensure cleanup happens
 			this.cleanupService.unregisterJob(job.id);
-			
+
 			// Clean up job-specific files
-			await this.cleanupService.cleanJobFiles(job.id).catch((cleanupError: unknown) => {
-				logger.error(`Failed to cleanup job files: ${cleanupError}`);
-			});
+			await this.cleanupService
+				.cleanJobFiles(job.id)
+				.catch((cleanupError: unknown) => {
+					logger.error(`Failed to cleanup job files: ${cleanupError}`);
+				});
 
 			throw error;
 		}

@@ -46,11 +46,7 @@ export class CleanupService {
 	 * Clean up old files in the temp directory
 	 */
 	async cleanOldFiles(options: CleanupOptions = {}): Promise<CleanupResult> {
-		const {
-			maxAgeHours = 24,
-			excludePatterns = [],
-			dryRun = false,
-		} = options;
+		const { maxAgeHours = 24, excludePatterns = [], dryRun = false } = options;
 
 		const result: CleanupResult = {
 			filesDeleted: 0,
@@ -91,7 +87,7 @@ export class CleanupService {
 					// Skip if item is not old enough
 					if (ageMs < maxAgeMs) {
 						logger.debug(
-							`Skipping recent item: ${item.name} (age: ${Math.round(ageMs / 1000 / 60)} minutes)`
+							`Skipping recent item: ${item.name} (age: ${Math.round(ageMs / 1000 / 60)} minutes)`,
 						);
 						continue;
 					}
@@ -118,7 +114,7 @@ export class CleanupService {
 			}
 
 			logger.info(
-				`Cleanup completed: ${result.filesDeleted} files, ${result.directoriesDeleted} directories, ${this.formatBytes(result.bytesFreed)} freed`
+				`Cleanup completed: ${result.filesDeleted} files, ${result.directoriesDeleted} directories, ${this.formatBytes(result.bytesFreed)} freed`,
 			);
 		} catch (error) {
 			const errorMsg = `Cleanup failed: ${error}`;
@@ -135,12 +131,12 @@ export class CleanupService {
 	async cleanJobFiles(jobId: string): Promise<void> {
 		try {
 			const items = await fs.readdir(this.tempDir);
-			
+
 			for (const item of items) {
 				if (item.includes(jobId)) {
 					const itemPath = path.join(this.tempDir, item);
 					const stats = await fs.stat(itemPath);
-					
+
 					if (stats.isDirectory()) {
 						await fs.rm(itemPath, { recursive: true, force: true });
 						logger.debug(`Deleted job directory: ${itemPath}`);
@@ -150,7 +146,7 @@ export class CleanupService {
 					}
 				}
 			}
-			
+
 			logger.info(`Cleaned up files for job: ${jobId}`);
 		} catch (error) {
 			logger.error(`Failed to clean job files for ${jobId}: ${error}`);
@@ -162,12 +158,14 @@ export class CleanupService {
 	 */
 	async runStartupCleanup(): Promise<void> {
 		logger.info("Running startup cleanup...");
-		
+
 		// Clean files older than 48 hours on startup
 		const result = await this.cleanOldFiles({ maxAgeHours: 48 });
-		
+
 		if (result.errors.length > 0) {
-			logger.warn(`Startup cleanup completed with ${result.errors.length} errors`);
+			logger.warn(
+				`Startup cleanup completed with ${result.errors.length} errors`,
+			);
 		}
 	}
 
@@ -180,11 +178,11 @@ export class CleanupService {
 
 		try {
 			const items = await fs.readdir(this.tempDir, { withFileTypes: true });
-			
+
 			for (const item of items) {
 				const itemPath = path.join(this.tempDir, item.name);
 				const stats = await fs.stat(itemPath);
-				
+
 				if (item.isDirectory()) {
 					const dirUsage = await this.getDirectorySize(itemPath);
 					totalBytes += dirUsage.bytes;
@@ -204,12 +202,15 @@ export class CleanupService {
 	/**
 	 * Clean a directory recursively
 	 */
-	private async cleanDirectory(dirPath: string, result: CleanupResult): Promise<void> {
+	private async cleanDirectory(
+		dirPath: string,
+		result: CleanupResult,
+	): Promise<void> {
 		const items = await fs.readdir(dirPath, { withFileTypes: true });
-		
+
 		for (const item of items) {
 			const itemPath = path.join(dirPath, item.name);
-			
+
 			if (item.isDirectory()) {
 				await this.cleanDirectory(itemPath, result);
 				result.directoriesDeleted++;
@@ -219,7 +220,7 @@ export class CleanupService {
 				result.filesDeleted++;
 			}
 		}
-		
+
 		await fs.rm(dirPath, { recursive: true, force: true });
 		logger.debug(`Deleted directory: ${dirPath}`);
 	}
@@ -228,17 +229,17 @@ export class CleanupService {
 	 * Get the total size of a directory
 	 */
 	private async getDirectorySize(
-		dirPath: string
+		dirPath: string,
 	): Promise<{ bytes: number; files: number }> {
 		let bytes = 0;
 		let files = 0;
 
 		const items = await fs.readdir(dirPath, { withFileTypes: true });
-		
+
 		for (const item of items) {
 			const itemPath = path.join(dirPath, item.name);
 			const stats = await fs.stat(itemPath);
-			
+
 			if (item.isDirectory()) {
 				const subDirSize = await this.getDirectorySize(itemPath);
 				bytes += subDirSize.bytes;
@@ -256,11 +257,11 @@ export class CleanupService {
 	 * Check if a filename should be excluded from cleanup
 	 */
 	private shouldExclude(filename: string, excludePatterns: string[]): boolean {
-		return excludePatterns.some(pattern => {
+		return excludePatterns.some((pattern) => {
 			if (pattern.includes("*")) {
 				// Simple glob pattern matching
 				const regex = new RegExp(
-					"^" + pattern.replace(/\*/g, ".*").replace(/\?/g, ".") + "$"
+					`^${pattern.replace(/\*/g, ".*").replace(/\?/g, ".")}$`,
 				);
 				return regex.test(filename);
 			}
@@ -286,11 +287,11 @@ export class CleanupService {
 	 */
 	private formatBytes(bytes: number): string {
 		if (bytes === 0) return "0 Bytes";
-		
+
 		const k = 1024;
 		const sizes = ["Bytes", "KB", "MB", "GB"];
 		const i = Math.floor(Math.log(bytes) / Math.log(k));
-		
-		return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+
+		return `${parseFloat((bytes / k ** i).toFixed(2))} ${sizes[i]}`;
 	}
 }

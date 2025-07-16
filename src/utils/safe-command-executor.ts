@@ -134,24 +134,10 @@ export async function executeStreaming(
 	});
 }
 
-/**
- * Sanitize file paths to prevent directory traversal attacks
- */
-export function sanitizePath(filePath: string): string {
-	// Remove any directory traversal attempts
-	return filePath
-		.replace(/\.\./g, "")
-		.replace(/~\//g, "")
-		.replace(/\\/g, "/")
-		.replace(/\/+/g, "/")
-		.trim();
-}
-
 // Re-export for backward compatibility with class-based approach
 export const SafeCommandExecutor = {
 	execute,
 	commandExists,
 	getCommandVersion,
 	executeStreaming,
-	sanitizePath,
 };
