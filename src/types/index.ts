@@ -64,3 +64,12 @@ export interface ProcessingJob {
 	createdAt: Date;
 	updatedAt: Date;
 }
+
+export interface ConvertCommandOptions {
+	interval: string;
+	format: "markdown" | "txt" | "pdf";
+	language: string;
+	threshold: string;
+	output: string;
+	temp: string;
+}

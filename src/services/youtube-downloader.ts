@@ -2,6 +2,13 @@ import { execSync, spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { v4 as uuidv4 } from "uuid";
+import {
+	MAX_VIDEO_DURATION_MINUTES,
+	MAX_VIDEO_DURATION_SECONDS,
+	PROGRESS_DOWNLOAD_END,
+	PROGRESS_DOWNLOAD_START,
+	PROGRESS_METADATA_FETCH,
+} from "../config/constants";
 import type { VideoMetadata } from "../types";
 import logger from "../utils/logger";
 
@@ -50,19 +57,19 @@ export class YouTubeDownloader {
 		// Ensure temp directory exists
 		await fs.mkdir(this.tempDir, { recursive: true });
 
-		// First get video metadata (5%)
-		if (onProgress) onProgress(5);
+		// First get video metadata
+		if (onProgress) onProgress(PROGRESS_METADATA_FETCH);
 		const metadata = await this.getVideoMetadata(url);
 
-		// Check video duration limit (10 minutes for PoC)
-		if (metadata.duration > 600) {
+		// Check video duration limit
+		if (metadata.duration > MAX_VIDEO_DURATION_SECONDS) {
 			throw new Error(
-				`Video too long: ${Math.floor(metadata.duration / 60)} minutes. This proof of concept supports videos up to 10 minutes.`,
+				`Video too long: ${Math.floor(metadata.duration / 60)} minutes. This proof of concept supports videos up to ${MAX_VIDEO_DURATION_MINUTES} minutes.`,
 			);
 		}
 
 		// Download video with progress
-		if (onProgress) onProgress(10);
+		if (onProgress) onProgress(PROGRESS_DOWNLOAD_START);
 		await this.executeYtDlpWithProgress(
 			[
 				url,
@@ -104,52 +111,41 @@ export class YouTubeDownloader {
 	}
 
 	private executeYtDlp(args: string[]): Promise<string> {
-		return new Promise((resolve, reject) => {
-			let stdout = "";
-			let stderr = "";
-
-			const childProcess = spawn(this.ytDlpPath, args);
-
-			// Kill child process if parent exits
-			const cleanup = () => {
-				if (!childProcess.killed) {
-					childProcess.kill("SIGTERM");
-				}
-			};
-
-			process.once("exit", cleanup);
-			process.once("SIGINT", cleanup);
-			process.once("SIGTERM", cleanup);
-
-			childProcess.stdout.on("data", (data) => {
-				stdout += data.toString();
-			});
-
-			childProcess.stderr.on("data", (data) => {
-				stderr += data.toString();
-			});
-
-			childProcess.on("close", (code) => {
-				process.removeListener("exit", cleanup);
-				process.removeListener("SIGINT", cleanup);
-				process.removeListener("SIGTERM", cleanup);
-
-				if (code !== 0) {
-					reject(new Error(`yt-dlp exited with code ${code}: ${stderr}`));
-				} else {
-					resolve(stdout);
-				}
-			});
-
-			childProcess.on("error", (err) => {
-				reject(new Error(`Failed to spawn yt-dlp: ${err.message}`));
-			});
-		});
+		return this.executeYtDlpInternal(args);
 	}
 
 	private executeYtDlpWithProgress(
 		args: string[],
 		onProgress?: (percent: number) => void,
+	): Promise<string> {
+		return this.executeYtDlpInternal(args, (line) => {
+			// Parse download progress from yt-dlp output - handle all stages
+			const progressMatch = line.match(/\[(\w+)\]\s+(\d+\.?\d*)%/);
+			if (progressMatch && onProgress) {
+				const stage = progressMatch[1];
+				const percent = parseFloat(progressMatch[2]);
+
+				// For now, only track download stage to avoid confusion
+				if (stage === "download") {
+					// Map download progress from start to end
+					const progressRange = PROGRESS_DOWNLOAD_END - PROGRESS_DOWNLOAD_START;
+					onProgress(PROGRESS_DOWNLOAD_START + (percent / 100) * progressRange);
+				}
+			}
+
+			// Also check for completion messages
+			if (
+				line.includes("[download] 100%") ||
+				line.includes("has already been downloaded")
+			) {
+				if (onProgress) onProgress(PROGRESS_DOWNLOAD_END);
+			}
+		});
+	}
+
+	private executeYtDlpInternal(
+		args: string[],
+		onLine?: (line: string) => void,
 	): Promise<string> {
 		return new Promise((resolve, reject) => {
 			let stdout = "";
@@ -169,30 +165,14 @@ export class YouTubeDownloader {
 			process.once("SIGTERM", cleanup);
 
 			childProcess.stdout.on("data", (data) => {
-				const lines = data.toString().split("\n");
-				for (const line of lines) {
-					stdout += `${line}\n`;
-
-					// Parse download progress from yt-dlp output - handle all stages
-					const progressMatch = line.match(/\[(\w+)\]\s+(\d+\.?\d*)%/);
-					if (progressMatch && onProgress) {
-						const stage = progressMatch[1];
-						const percent = parseFloat(progressMatch[2]);
-
-						// For now, only track download stage to avoid confusion
-						if (stage === "download") {
-							// Map download progress from 10% to 25%
-							onProgress(10 + (percent / 100) * 15);
-						}
+				if (onLine) {
+					const lines = data.toString().split("\n");
+					for (const line of lines) {
+						stdout += `${line}\n`;
+						onLine(line);
 					}
-
-					// Also check for completion messages
-					if (
-						line.includes("[download] 100%") ||
-						line.includes("has already been downloaded")
-					) {
-						if (onProgress) onProgress(25);
-					}
+				} else {
+					stdout += data.toString();
 				}
 			});
 

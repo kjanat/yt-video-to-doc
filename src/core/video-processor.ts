@@ -13,7 +13,14 @@ import {
 	type ProcessingResult,
 	ProcessingStatus,
 } from "../types";
+import {
+	AppError,
+	FrameExtractionError,
+	OCRError,
+	VideoDownloadError,
+} from "../utils/errors";
 import logger from "../utils/logger";
+import { withCleanup, withRetry } from "../utils/retry";
 
 export class VideoProcessor extends EventEmitter {
 	private options: ProcessingOptions;
@@ -54,30 +61,64 @@ export class VideoProcessor extends EventEmitter {
 		const startTime = Date.now();
 
 		try {
-			// Download video
+			// Download video with retry
 			this.updateJobStatus(job, ProcessingStatus.DOWNLOADING, 0);
-			const { videoPath, metadata } = await this.downloader.downloadVideo(
-				videoUrl,
-				(progress) => {
-					this.updateJobStatus(
-						job,
-						ProcessingStatus.DOWNLOADING,
-						Math.round(progress),
-					);
+			const { videoPath, metadata } = await withRetry(
+				async () => {
+					try {
+						return await this.downloader.downloadVideo(videoUrl, (progress) => {
+							this.updateJobStatus(
+								job,
+								ProcessingStatus.DOWNLOADING,
+								Math.round(progress),
+							);
+						});
+					} catch (error) {
+						throw new VideoDownloadError(
+							error instanceof Error ? error.message : String(error),
+							videoUrl,
+						);
+					}
+				},
+				{
+					maxRetries: 3,
+					onRetry: (error, attempt) => {
+						logger.warn(`Video download retry attempt ${attempt}`, {
+							url: videoUrl,
+							error: error.message,
+						});
+					},
 				},
 			);
 
-			// Extract frames
+			// Extract frames with cleanup on failure
 			this.updateJobStatus(job, ProcessingStatus.EXTRACTING_FRAMES, 25);
-			const frames = await this.frameExtractor.extractFrames(
-				videoPath,
-				this.options.frameInterval,
-				(progress) => {
-					this.updateJobStatus(
-						job,
-						ProcessingStatus.EXTRACTING_FRAMES,
-						Math.round(progress),
-					);
+			const frames = await withCleanup(
+				async () => {
+					try {
+						return await this.frameExtractor.extractFrames(
+							videoPath,
+							this.options.frameInterval,
+							(progress) => {
+								this.updateJobStatus(
+									job,
+									ProcessingStatus.EXTRACTING_FRAMES,
+									Math.round(progress),
+								);
+							},
+						);
+					} catch (error) {
+						throw new FrameExtractionError(
+							error instanceof Error ? error.message : String(error),
+							videoPath,
+						);
+					}
+				},
+				async () => {
+					// Cleanup video on frame extraction failure
+					if (videoPath) {
+						await this.downloader.cleanup(videoPath).catch(() => {});
+					}
 				},
 			);
 
@@ -94,16 +135,27 @@ export class VideoProcessor extends EventEmitter {
 				},
 			);
 
-			// Run OCR
+			// Run OCR with retry for individual failures
 			this.updateJobStatus(job, ProcessingStatus.RUNNING_OCR, 60);
-			const slidesWithText = await this.ocrService.processSlides(
-				slides,
-				(progress) => {
-					this.updateJobStatus(
-						job,
-						ProcessingStatus.RUNNING_OCR,
-						Math.round(progress),
-					);
+			const slidesWithText = await withRetry(
+				async () => {
+					try {
+						return await this.ocrService.processSlides(slides, (progress) => {
+							this.updateJobStatus(
+								job,
+								ProcessingStatus.RUNNING_OCR,
+								Math.round(progress),
+							);
+						});
+					} catch (error) {
+						throw new OCRError(
+							error instanceof Error ? error.message : String(error),
+						);
+					}
+				},
+				{
+					maxRetries: 2,
+					shouldRetry: (error) => error instanceof OCRError,
 				},
 			);
 
@@ -134,7 +186,35 @@ export class VideoProcessor extends EventEmitter {
 		} catch (error) {
 			this.updateJobStatus(job, ProcessingStatus.FAILED, job.progress);
 			job.error = error instanceof Error ? error.message : String(error);
-			logger.error(`Processing failed: ${job.error}`);
+			logger.error(`Processing failed: ${job.error}`, {
+				jobId: job.id,
+				status: job.status,
+				error:
+					error instanceof AppError
+						? {
+								code: error.code,
+								message: error.message,
+								stack: error.stack,
+							}
+						: error,
+			});
+
+			// Ensure cleanup happens even on failure
+			if (
+				job.status === ProcessingStatus.EXTRACTING_FRAMES ||
+				job.status === ProcessingStatus.DETECTING_SLIDES ||
+				job.status === ProcessingStatus.RUNNING_OCR
+			) {
+				// Try to find and clean up any temporary files
+				try {
+					const tempVideoPath = `${this.options.tempDir}/${job.id}.mp4`;
+					const tempFramesPath = `${this.options.tempDir}/frames/${job.id}`;
+					await this.cleanup(tempVideoPath, `${tempFramesPath}/frame-1.png`);
+				} catch (cleanupError) {
+					logger.error("Failed to cleanup after error", cleanupError);
+				}
+			}
+
 			throw error;
 		}
 	}

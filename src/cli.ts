@@ -4,8 +4,20 @@ import path from "node:path";
 import chalk from "chalk";
 import { Command } from "commander";
 import ora from "ora";
+import {
+	EXIT_CODE_ERROR,
+	EXIT_CODE_SIGINT,
+	EXIT_CODE_SIGTERM,
+	EXIT_CODE_SUCCESS,
+	MAX_SLIDES_PREVIEW,
+	MAX_TEXT_PREVIEW_LENGTH,
+	SECONDS_PER_HOUR,
+	SECONDS_PER_MINUTE,
+	TEST_FRAME_INTERVAL_SECONDS,
+	TEST_VIDEO_URL,
+} from "./config/constants";
 import { VideoProcessor } from "./core/video-processor";
-import type { ProcessingOptions } from "./types";
+import type { ConvertCommandOptions, ProcessingOptions } from "./types";
 
 const program = new Command();
 
@@ -32,7 +44,7 @@ program
 	.option("-t, --threshold <value>", "Slide detection threshold (0-1)", "0.15")
 	.option("-o, --output <dir>", "Output directory", "./output")
 	.option("--temp <dir>", "Temporary directory", "./temp")
-	.action(async (url: string, options: any) => {
+	.action(async (url: string, options: ConvertCommandOptions) => {
 		const spinner = ora();
 
 		try {
@@ -87,20 +99,22 @@ program
 			const slidesWithText = result.slides.filter((s) => s.primaryText);
 			if (slidesWithText.length > 0) {
 				console.log(chalk.yellow("\n📝 Sample extracted text:\n"));
-				slidesWithText.slice(0, 3).forEach((slide, index) => {
+				slidesWithText.slice(0, MAX_SLIDES_PREVIEW).forEach((slide, index) => {
 					console.log(chalk.gray(`Slide ${index + 1}:`));
-					console.log(`${slide.primaryText.substring(0, 100)}...\n`);
+					console.log(
+						`${slide.primaryText.substring(0, MAX_TEXT_PREVIEW_LENGTH)}...\n`,
+					);
 				});
 			}
 
-			process.exit(0);
+			process.exit(EXIT_CODE_SUCCESS);
 		} catch (error) {
 			spinner.fail("Processing failed");
 			console.error(
 				chalk.red("\n❌ Error:"),
 				error instanceof Error ? error.message : error,
 			);
-			process.exit(1);
+			process.exit(EXIT_CODE_ERROR);
 		}
 	});
 
@@ -118,11 +132,11 @@ program
 			await fs.rm(logsDir, { recursive: true, force: true });
 
 			spinner.succeed("Cleanup completed");
-			process.exit(0);
+			process.exit(EXIT_CODE_SUCCESS);
 		} catch (error) {
 			spinner.fail("Cleanup failed");
 			console.error(chalk.red("Error:"), error);
-			process.exit(1);
+			process.exit(EXIT_CODE_ERROR);
 		}
 	});
 
@@ -133,10 +147,10 @@ program
 		console.log(chalk.blue("\n🧪 Running test with sample video\n"));
 
 		// Use a short public domain video for testing
-		const testUrl = "https://www.youtube.com/watch?v=aqz-KE-bpKQ"; // Big Buck Bunny trailer
+		const testUrl = TEST_VIDEO_URL;
 
 		const processor = new VideoProcessor({
-			frameInterval: 5, // Every 5 seconds for quick test
+			frameInterval: TEST_FRAME_INTERVAL_SECONDS,
 			outputFormat: "markdown",
 		});
 
@@ -146,11 +160,11 @@ program
 			const result = await processor.processVideo(testUrl);
 			spinner.succeed("Test completed successfully!");
 			console.log(chalk.green(`\nOutput saved to: ${result.outputPath}`));
-			process.exit(0);
+			process.exit(EXIT_CODE_SUCCESS);
 		} catch (error) {
 			spinner.fail("Test failed");
 			console.error(chalk.red("Error:"), error);
-			process.exit(1);
+			process.exit(EXIT_CODE_ERROR);
 		}
 	});
 
@@ -166,9 +180,9 @@ function isValidYouTubeUrl(url: string): boolean {
 }
 
 function formatDuration(seconds: number): string {
-	const hours = Math.floor(seconds / 3600);
-	const minutes = Math.floor((seconds % 3600) / 60);
-	const secs = Math.floor(seconds % 60);
+	const hours = Math.floor(seconds / SECONDS_PER_HOUR);
+	const minutes = Math.floor((seconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE);
+	const secs = Math.floor(seconds % SECONDS_PER_MINUTE);
 
 	if (hours > 0) {
 		return `${hours}h ${minutes}m ${secs}s`;
@@ -190,16 +204,16 @@ if (!process.argv.slice(2).length) {
 // Ensure process exits cleanly
 process.on("unhandledRejection", (err) => {
 	console.error(chalk.red("Unhandled error:"), err);
-	process.exit(1);
+	process.exit(EXIT_CODE_ERROR);
 });
 
 // Handle Ctrl+C gracefully
 process.on("SIGINT", () => {
 	console.log(chalk.yellow("\n\nInterrupted by user"));
-	process.exit(130); // Standard exit code for SIGINT
+	process.exit(EXIT_CODE_SIGINT);
 });
 
 process.on("SIGTERM", () => {
 	console.log(chalk.yellow("\n\nTerminated"));
-	process.exit(143); // Standard exit code for SIGTERM
+	process.exit(EXIT_CODE_SIGTERM);
 });
