@@ -20,6 +20,7 @@ import { VideoProcessor } from "./core/video-processor";
 import type { ConvertCommandOptions, ProcessingOptions } from "./types";
 import { validateYouTubeUrl, validateCommandOptions } from "./utils/validators";
 import { ValidationError } from "./utils/errors";
+import { CleanupService } from "./services/cleanup-service";
 
 const program = new Command();
 
@@ -127,17 +128,37 @@ program
 program
 	.command("clean")
 	.description("Clean up temporary files")
-	.action(async () => {
-		const spinner = ora("Cleaning up temporary files...").start();
+	.option("-a, --age <hours>", "Maximum age of files to keep (in hours)", "24")
+	.option("-d, --dry-run", "Show what would be deleted without actually deleting")
+	.action(async (options) => {
+		const spinner = ora("Analyzing temporary files...").start();
 
 		try {
 			const tempDir = path.join(process.cwd(), "temp");
-			await fs.rm(tempDir, { recursive: true, force: true });
+			const cleanupService = new CleanupService(tempDir);
+			
+			// Get disk usage before cleanup
+			const usageBefore = await cleanupService.getDiskUsage();
+			spinner.text = `Found ${usageBefore.fileCount} files using ${formatBytes(usageBefore.totalBytes)}`;
+			
+			// Run cleanup
+			const result = await cleanupService.cleanOldFiles({
+				maxAgeHours: parseInt(options.age),
+				dryRun: options.dryRun,
+			});
+			
+			if (options.dryRun) {
+				spinner.info(`[DRY RUN] Would delete ${result.filesDeleted} files and ${result.directoriesDeleted} directories`);
+			} else {
+				spinner.succeed(
+					`Cleanup completed: ${result.filesDeleted} files, ${result.directoriesDeleted} directories, ${formatBytes(result.bytesFreed)} freed`
+				);
+			}
+			
+			if (result.errors.length > 0) {
+				console.warn(chalk.yellow(`\n⚠️  ${result.errors.length} errors occurred during cleanup`));
+			}
 
-			const logsDir = path.join(process.cwd(), "logs");
-			await fs.rm(logsDir, { recursive: true, force: true });
-
-			spinner.succeed("Cleanup completed");
 			process.exit(EXIT_CODE_SUCCESS);
 		} catch (error) {
 			spinner.fail("Cleanup failed");
@@ -175,6 +196,15 @@ program
 	});
 
 // Helper functions
+function formatBytes(bytes: number): string {
+	if (bytes === 0) return "0 Bytes";
+	
+	const k = 1024;
+	const sizes = ["Bytes", "KB", "MB", "GB"];
+	const i = Math.floor(Math.log(bytes) / Math.log(k));
+	
+	return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+}
 
 function formatDuration(seconds: number): string {
 	const hours = Math.floor(seconds / SECONDS_PER_HOUR);

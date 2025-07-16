@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { v4 as uuidv4 } from "uuid";
 import { DEFAULT_OPTIONS } from "../config/defaults";
+import { CleanupService } from "../services/cleanup-service";
 import { DocumentGenerator } from "../services/document-generator";
 import { FrameExtractor } from "../services/frame-extractor";
 import { OCRService } from "../services/ocr-service";
@@ -28,6 +29,7 @@ export class VideoProcessor extends EventEmitter {
 	private slideDetector: SlideDetector;
 	private ocrService: OCRService;
 	private documentGenerator: DocumentGenerator;
+	private cleanupService: CleanupService;
 
 	constructor(options: Partial<ProcessingOptions> = {}) {
 		super();
@@ -44,6 +46,12 @@ export class VideoProcessor extends EventEmitter {
 			this.options.tempDir,
 		);
 		this.documentGenerator = new DocumentGenerator(this.options.outputDir);
+		this.cleanupService = new CleanupService(this.options.tempDir);
+		
+		// Run startup cleanup
+		this.cleanupService.runStartupCleanup().catch((error: unknown) => {
+			logger.warn(`Startup cleanup failed: ${error}`);
+		});
 	}
 
 	async processVideo(videoUrl: string): Promise<ProcessingResult> {
@@ -166,6 +174,12 @@ export class VideoProcessor extends EventEmitter {
 
 			// Cleanup
 			await this.cleanup(videoPath, frames[0]?.imagePath);
+			
+			// Unregister job and clean up files
+			this.cleanupService.unregisterJob(job.id);
+			await this.cleanupService.cleanJobFiles(job.id).catch((error: unknown) => {
+				logger.warn(`Failed to cleanup job files after success: ${error}`);
+			});
 
 			const result: ProcessingResult = {
 				videoMetadata: metadata,
@@ -197,21 +211,13 @@ export class VideoProcessor extends EventEmitter {
 						: error,
 			});
 
-			// Ensure cleanup happens even on failure
-			if (
-				job.status === ProcessingStatus.EXTRACTING_FRAMES ||
-				job.status === ProcessingStatus.DETECTING_SLIDES ||
-				job.status === ProcessingStatus.RUNNING_OCR
-			) {
-				// Try to find and clean up any temporary files
-				try {
-					const tempVideoPath = `${this.options.tempDir}/${job.id}.mp4`;
-					const tempFramesPath = `${this.options.tempDir}/frames/${job.id}`;
-					await this.cleanup(tempVideoPath, `${tempFramesPath}/frame-1.png`);
-				} catch (cleanupError) {
-					logger.error("Failed to cleanup after error", cleanupError);
-				}
-			}
+			// Ensure cleanup happens
+			this.cleanupService.unregisterJob(job.id);
+			
+			// Clean up job-specific files
+			await this.cleanupService.cleanJobFiles(job.id).catch((cleanupError: unknown) => {
+				logger.error(`Failed to cleanup job files: ${cleanupError}`);
+			});
 
 			throw error;
 		}
