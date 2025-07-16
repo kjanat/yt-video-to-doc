@@ -15,7 +15,7 @@ Convert YouTube videos (especially presentations and slideshows) into structured
 
 ### System Requirements
 
-- Node.js 18+ 
+- Node.js 18+
 - Python 3.8+ (for yt-dlp)
 - FFmpeg
 - Tesseract OCR
@@ -85,16 +85,19 @@ Options:
 ### Examples
 
 Extract frames every 5 seconds:
+
 ```bash
 npm run dev convert https://youtube.com/watch?v=VIDEO_ID -i 5
 ```
 
 Use German OCR:
+
 ```bash
 npm run dev convert https://youtube.com/watch?v=VIDEO_ID -l deu
 ```
 
 Higher slide detection sensitivity:
+
 ```bash
 npm run dev convert https://youtube.com/watch?v=VIDEO_ID -t 0.2
 ```
@@ -157,24 +160,31 @@ The generated markdown includes:
 - OCR-extracted text from each slide
 
 Example output structure:
+
 ```markdown
 # Video Title
 
 ---
+
 **Source:** https://youtube.com/watch?v=...
 **Duration:** 5m 23s
 **Generated:** 2024-01-15T10:30:00Z
+
 ---
 
 ## Table of Contents
+
 - [Slide 1](#slide-1)
 - [Slide 2](#slide-2)
 
 ## Slide 1
+
 **Time:** 0:00 - 0:15
 
 ### Content
+
 Introduction to Machine Learning
+
 - What is ML?
 - Types of algorithms
 

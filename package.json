@@ -1,49 +1,49 @@
 {
-  "name": "yt-video-to-txt",
-  "version": "0.1.0",
-  "description": "YouTube video to document converter",
-  "main": "dist/index.js",
-  "scripts": {
-    "build": "tsc",
-    "dev": "tsx src/cli.ts",
-    "start": "node dist/cli.js",
-    "test": "jest",
-    "lint": "eslint src/**/*.ts",
-    "typecheck": "tsc --noEmit"
-  },
-  "keywords": [
-    "youtube",
-    "video",
-    "ocr",
-    "document",
-    "converter"
-  ],
-  "author": "Kaj Kowalski",
-  "license": "MIT",
-  "dependencies": {
-    "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "axios": "^1.10.0",
-    "chalk": "^5.4.1",
-    "commander": "^14.0.0",
-    "fluent-ffmpeg": "^2.1.3",
-    "jimp": "^1.6.0",
-    "node-tesseract-ocr": "^2.2.1",
-    "ora": "^8.2.0",
-    "uuid": "^11.1.0",
-    "winston": "^3.17.0"
-  },
-  "devDependencies": {
-    "@types/fluent-ffmpeg": "^2.1.27",
-    "@types/jest": "^30.0.0",
-    "@types/node": "^24.0.14",
-    "@types/uuid": "^10.0.0",
-    "@typescript-eslint/eslint-plugin": "^8.37.0",
-    "@typescript-eslint/parser": "^8.37.0",
-    "eslint": "^9.31.0",
-    "jest": "^30.0.4",
-    "ts-jest": "^29.4.0",
-    "tsx": "^4.20.3",
-    "typescript": "^5.8.3"
-  },
-  "packageManager": "pnpm@10.13.1+sha512.37ebf1a5c7a30d5fabe0c5df44ee8da4c965ca0c5af3dbab28c3a1681b70a256218d05c81c9c0dcf767ef6b8551eb5b960042b9ed4300c59242336377e01cfad"
+	"name": "yt-video-to-txt",
+	"version": "0.1.0",
+	"description": "YouTube video to document converter",
+	"main": "dist/index.js",
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsx src/cli.ts",
+		"start": "node dist/cli.js",
+		"test": "jest",
+		"lint": "eslint src/**/*.ts",
+		"typecheck": "tsc --noEmit"
+	},
+	"keywords": [
+		"youtube",
+		"video",
+		"ocr",
+		"document",
+		"converter"
+	],
+	"author": "Kaj Kowalski",
+	"license": "MIT",
+	"dependencies": {
+		"@ffmpeg-installer/ffmpeg": "^1.1.0",
+		"axios": "^1.10.0",
+		"chalk": "^5.4.1",
+		"commander": "^14.0.0",
+		"fluent-ffmpeg": "^2.1.3",
+		"jimp": "^1.6.0",
+		"node-tesseract-ocr": "^2.2.1",
+		"ora": "^8.2.0",
+		"uuid": "^11.1.0",
+		"winston": "^3.17.0"
+	},
+	"devDependencies": {
+		"@types/fluent-ffmpeg": "^2.1.27",
+		"@types/jest": "^30.0.0",
+		"@types/node": "^24.0.14",
+		"@types/uuid": "^10.0.0",
+		"@typescript-eslint/eslint-plugin": "^8.37.0",
+		"@typescript-eslint/parser": "^8.37.0",
+		"eslint": "^9.31.0",
+		"jest": "^30.0.4",
+		"ts-jest": "^29.4.0",
+		"tsx": "^4.20.3",
+		"typescript": "^5.8.3"
+	},
+	"packageManager": "pnpm@10.13.1+sha512.37ebf1a5c7a30d5fabe0c5df44ee8da4c965ca0c5af3dbab28c3a1681b70a256218d05c81c9c0dcf767ef6b8551eb5b960042b9ed4300c59242336377e01cfad"
 }

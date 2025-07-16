@@ -4,7 +4,7 @@ echo "Testing with a short educational video..."
 echo ""
 
 # Git in 100 seconds (2 minutes) - has text overlays
-VIDEO_URL="https://www.youtube.com/watch?v=hwP7WQkmECE"
+VIDEO_URL="https://www.youtube.com/watch?v=hwP7WQkmECE" # Git Explained in 100 Seconds - Fireship
 
 echo "Video: Git in 100 Seconds"
 echo "URL: $VIDEO_URL"
