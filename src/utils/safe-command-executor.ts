@@ -1,4 +1,4 @@
-import { spawn, type SpawnOptions } from "node:child_process";
+import { type SpawnOptions, spawn } from "node:child_process";
 import logger from "./logger";
 
 export interface CommandResult {
@@ -55,12 +55,23 @@ export async function execute(
  */
 export async function commandExists(command: string): Promise<boolean> {
 	try {
-		// Use 'command -v' on Unix-like systems, 'where' on Windows
-		const checkCommand = process.platform === "win32" ? "where" : "command";
-		const checkArgs = process.platform === "win32" ? [command] : ["-v", command];
-		
-		const result = await execute(checkCommand, checkArgs);
-		return result.exitCode === 0;
+		// Try to execute the command with --version or --help
+		// This is more reliable than 'command -v' which might not exist in all shells
+		const result = await execute(command, ["--version"]).catch(() =>
+			// If --version fails, try --help
+			execute(command, ["--help"]).catch(() =>
+				// If both fail, try with no args (some commands might exit with 0)
+				execute(command, []).catch(() => ({
+					exitCode: -1,
+					stdout: "",
+					stderr: "",
+				})),
+			),
+		);
+
+		// Command exists if it returned any exit code (even non-zero)
+		// except our sentinel value -1 which means the command wasn't found
+		return result.exitCode !== -1;
 	} catch (error) {
 		logger.debug(`Command '${command}' not found: ${error}`);
 		return false;
@@ -70,7 +81,9 @@ export async function commandExists(command: string): Promise<boolean> {
 /**
  * Get command version safely
  */
-export async function getCommandVersion(command: string): Promise<string | null> {
+export async function getCommandVersion(
+	command: string,
+): Promise<string | null> {
 	try {
 		const result = await execute(command, ["--version"]);
 		if (result.exitCode === 0) {
