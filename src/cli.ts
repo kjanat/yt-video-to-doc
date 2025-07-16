@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import fs from "node:fs/promises";
+
 import path from "node:path";
 import chalk from "chalk";
 import { Command } from "commander";
@@ -17,10 +17,10 @@ import {
 	TEST_VIDEO_URL,
 } from "./config/constants";
 import { VideoProcessor } from "./core/video-processor";
-import type { ConvertCommandOptions, ProcessingOptions } from "./types";
-import { validateYouTubeUrl, validateCommandOptions } from "./utils/validators";
-import { ValidationError } from "./utils/errors";
 import { CleanupService } from "./services/cleanup-service";
+import type { ConvertCommandOptions, ProcessingOptions } from "./types";
+import { ValidationError } from "./utils/errors";
+import { validateCommandOptions, validateYouTubeUrl } from "./utils/validators";
 
 const program = new Command();
 
@@ -64,7 +64,8 @@ program
 				frameInterval: validatedOptions.interval || parseInt(options.interval),
 				outputFormat: validatedOptions.format || options.format,
 				ocrLanguage: validatedOptions.language || options.language,
-				slideDetectionThreshold: validatedOptions.threshold || parseFloat(options.threshold),
+				slideDetectionThreshold:
+					validatedOptions.threshold || parseFloat(options.threshold),
 				outputDir: validatedOptions.output || options.output,
 				tempDir: validatedOptions.temp || options.temp,
 			};
@@ -80,7 +81,7 @@ program
 
 			// Process video
 			spinner.start("Starting video processing...");
-			const result = await processor.processVideo(validatedUrl);
+			const result = await processor.processVideo(validatedUrl.url);
 			spinner.succeed("Processing completed!");
 
 			// Display results
@@ -112,7 +113,7 @@ program
 			process.exit(EXIT_CODE_SUCCESS);
 		} catch (error) {
 			spinner.fail("Processing failed");
-			
+
 			if (error instanceof ValidationError) {
 				console.error(chalk.red("\n❌ Validation Error:"), error.message);
 			} else {
@@ -129,34 +130,43 @@ program
 	.command("clean")
 	.description("Clean up temporary files")
 	.option("-a, --age <hours>", "Maximum age of files to keep (in hours)", "24")
-	.option("-d, --dry-run", "Show what would be deleted without actually deleting")
+	.option(
+		"-d, --dry-run",
+		"Show what would be deleted without actually deleting",
+	)
 	.action(async (options) => {
 		const spinner = ora("Analyzing temporary files...").start();
 
 		try {
 			const tempDir = path.join(process.cwd(), "temp");
 			const cleanupService = new CleanupService(tempDir);
-			
+
 			// Get disk usage before cleanup
 			const usageBefore = await cleanupService.getDiskUsage();
 			spinner.text = `Found ${usageBefore.fileCount} files using ${formatBytes(usageBefore.totalBytes)}`;
-			
+
 			// Run cleanup
 			const result = await cleanupService.cleanOldFiles({
 				maxAgeHours: parseInt(options.age),
 				dryRun: options.dryRun,
 			});
-			
+
 			if (options.dryRun) {
-				spinner.info(`[DRY RUN] Would delete ${result.filesDeleted} files and ${result.directoriesDeleted} directories`);
+				spinner.info(
+					`[DRY RUN] Would delete ${result.filesDeleted} files and ${result.directoriesDeleted} directories`,
+				);
 			} else {
 				spinner.succeed(
-					`Cleanup completed: ${result.filesDeleted} files, ${result.directoriesDeleted} directories, ${formatBytes(result.bytesFreed)} freed`
+					`Cleanup completed: ${result.filesDeleted} files, ${result.directoriesDeleted} directories, ${formatBytes(result.bytesFreed)} freed`,
 				);
 			}
-			
+
 			if (result.errors.length > 0) {
-				console.warn(chalk.yellow(`\n⚠️  ${result.errors.length} errors occurred during cleanup`));
+				console.warn(
+					chalk.yellow(
+						`\n⚠️  ${result.errors.length} errors occurred during cleanup`,
+					),
+				);
 			}
 
 			process.exit(EXIT_CODE_SUCCESS);
@@ -198,12 +208,12 @@ program
 // Helper functions
 function formatBytes(bytes: number): string {
 	if (bytes === 0) return "0 Bytes";
-	
+
 	const k = 1024;
 	const sizes = ["Bytes", "KB", "MB", "GB"];
 	const i = Math.floor(Math.log(bytes) / Math.log(k));
-	
-	return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+
+	return `${parseFloat((bytes / k ** i).toFixed(2))} ${sizes[i]}`;
 }
 
 function formatDuration(seconds: number): string {
