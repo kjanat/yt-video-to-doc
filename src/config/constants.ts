@@ -6,15 +6,22 @@ export const MAX_VIDEO_DURATION_MINUTES = 10;
 export const PROGRESS_METADATA_FETCH = 5;
 export const PROGRESS_DOWNLOAD_START = 10;
 export const PROGRESS_DOWNLOAD_END = 25;
+export const PROGRESS_EXTRACT_START = 25;
+export const PROGRESS_EXTRACT_END = 40;
+export const PROGRESS_DETECT_START = 40;
+export const PROGRESS_DETECT_END = 60;
+export const PROGRESS_OCR_START = 60;
+export const PROGRESS_OCR_END = 85;
+export const PROGRESS_GENERATE_START = 85;
+export const PROGRESS_GENERATE_END = 100;
 export const PROGRESS_FRAME_EXTRACTION_START = 25;
 export const PROGRESS_SLIDE_DETECTION_START = 40;
-export const PROGRESS_OCR_START = 60;
 export const PROGRESS_DOCUMENT_GENERATION_START = 85;
 export const PROGRESS_COMPLETED = 100;
 
 // Test video settings
 export const TEST_FRAME_INTERVAL_SECONDS = 5;
-export const TEST_VIDEO_URL = "https://www.youtube.com/watch?v=aqz-KE-bpKQ"; // Big Buck Bunny trailer
+export const TEST_VIDEO_URL = "https://www.youtube.com/watch?v=aqz-KE-bpKQ"; // Big Buck Bunny trailer - Blender
 
 // Process exit codes
 export const EXIT_CODE_SUCCESS = 0;

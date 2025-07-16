@@ -105,34 +105,34 @@ This document summarizes the comprehensive improvements made to the YouTube Vide
 
 1. Install dependencies:
 
-```bash
-pnpm install
-```
+    ```bash
+    pnpm install
+    ```
 
 2. Copy environment template:
 
-```bash
-cp .env.example .env
-```
+    ```bash
+    cp .env.example .env
+    ```
 
 3. Run type checking:
 
-```bash
-npm run typecheck
-```
+    ```bash
+    npm run typecheck
+    ```
 
 4. Run linting:
 
-```bash
-npx @biomejs/biome check ./src
-```
+    ```bash
+    npx @biomejs/biome check ./src
+    ```
 
 5. Build and run:
 
-```bash
-npm run build
-npm start convert <youtube-url>
-```
+    ```bash
+    npm run build
+    npm start convert <youtube-url>
+    ```
 
 ## Conclusion
 
