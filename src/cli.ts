@@ -18,6 +18,8 @@ import {
 } from "./config/constants";
 import { VideoProcessor } from "./core/video-processor";
 import type { ConvertCommandOptions, ProcessingOptions } from "./types";
+import { validateYouTubeUrl, validateCommandOptions } from "./utils/validators";
+import { ValidationError } from "./utils/errors";
 
 const program = new Command();
 
@@ -53,18 +55,17 @@ program
 			console.log(chalk.gray(`Options: ${JSON.stringify(options, null, 2)}\n`));
 
 			// Validate URL
-			if (!isValidYouTubeUrl(url)) {
-				throw new Error("Invalid YouTube URL");
-			}
+			const validatedUrl = validateYouTubeUrl(url);
 
-			// Prepare options
+			// Validate and prepare options
+			const validatedOptions = validateCommandOptions(options);
 			const processingOptions: Partial<ProcessingOptions> = {
-				frameInterval: parseInt(options.interval),
-				outputFormat: options.format,
-				ocrLanguage: options.language,
-				slideDetectionThreshold: parseFloat(options.threshold),
-				outputDir: options.output,
-				tempDir: options.temp,
+				frameInterval: validatedOptions.interval || parseInt(options.interval),
+				outputFormat: validatedOptions.format || options.format,
+				ocrLanguage: validatedOptions.language || options.language,
+				slideDetectionThreshold: validatedOptions.threshold || parseFloat(options.threshold),
+				outputDir: validatedOptions.output || options.output,
+				tempDir: validatedOptions.temp || options.temp,
 			};
 
 			// Create processor
@@ -78,7 +79,7 @@ program
 
 			// Process video
 			spinner.start("Starting video processing...");
-			const result = await processor.processVideo(url);
+			const result = await processor.processVideo(validatedUrl);
 			spinner.succeed("Processing completed!");
 
 			// Display results
@@ -110,10 +111,15 @@ program
 			process.exit(EXIT_CODE_SUCCESS);
 		} catch (error) {
 			spinner.fail("Processing failed");
-			console.error(
-				chalk.red("\n❌ Error:"),
-				error instanceof Error ? error.message : error,
-			);
+			
+			if (error instanceof ValidationError) {
+				console.error(chalk.red("\n❌ Validation Error:"), error.message);
+			} else {
+				console.error(
+					chalk.red("\n❌ Error:"),
+					error instanceof Error ? error.message : error,
+				);
+			}
 			process.exit(EXIT_CODE_ERROR);
 		}
 	});
@@ -169,15 +175,6 @@ program
 	});
 
 // Helper functions
-function isValidYouTubeUrl(url: string): boolean {
-	const patterns = [
-		/^https?:\/\/(www\.)?youtube\.com\/watch\?v=[\w-]+/,
-		/^https?:\/\/youtu\.be\/[\w-]+/,
-		/^https?:\/\/(www\.)?youtube\.com\/embed\/[\w-]+/,
-	];
-
-	return patterns.some((pattern) => pattern.test(url));
-}
 
 function formatDuration(seconds: number): string {
 	const hours = Math.floor(seconds / SECONDS_PER_HOUR);
