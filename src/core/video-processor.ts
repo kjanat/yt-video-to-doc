@@ -4,8 +4,7 @@ import { DEFAULT_OPTIONS } from "../config/defaults";
 import { DocumentGenerator } from "../services/document-generator";
 import { FrameExtractor } from "../services/frame-extractor";
 import { OCRService } from "../services/ocr-service";
-import type { SlideDetector } from "../services/slide-detector";
-import { AdvancedSlideDetector } from "../services/slide-detector-advanced";
+import { SlideDetector } from "../services/slide-detector";
 import { YouTubeDownloader } from "../services/youtube-downloader";
 import {
 	type ProcessingJob,
@@ -26,7 +25,7 @@ export class VideoProcessor extends EventEmitter {
 	private options: ProcessingOptions;
 	private downloader: YouTubeDownloader;
 	private frameExtractor: FrameExtractor;
-	private slideDetector: SlideDetector | AdvancedSlideDetector;
+	private slideDetector: SlideDetector;
 	private ocrService: OCRService;
 	private documentGenerator: DocumentGenerator;
 
@@ -37,8 +36,7 @@ export class VideoProcessor extends EventEmitter {
 		// Initialize services
 		this.downloader = new YouTubeDownloader(this.options.tempDir);
 		this.frameExtractor = new FrameExtractor(this.options.tempDir);
-		// Use advanced slide detector for better detection
-		this.slideDetector = new AdvancedSlideDetector(
+		this.slideDetector = new SlideDetector(
 			this.options.slideDetectionThreshold,
 		);
 		this.ocrService = new OCRService(
