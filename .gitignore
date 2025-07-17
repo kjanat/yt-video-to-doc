@@ -187,3 +187,7 @@ frames/
 Thumbs.db
 
 *.backup
+
+# Test/debug files
+test-quick.js
+conversion.log

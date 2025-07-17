@@ -495,7 +495,6 @@ export async function validateEnvironment(
 				}
 			} else {
 				// Fallback to basic check
-				console.log(`Checking for ${tool.name}...`);
 			}
 
 			// Check version if getCommandVersion is provided
