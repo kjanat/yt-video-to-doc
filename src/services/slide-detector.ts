@@ -130,7 +130,10 @@ export class SlideDetector {
 			return weightedDiff;
 		} catch (error) {
 			logger.error(`Error comparing frames: ${error}`);
-			return 0;
+			// Propagate the error to ensure proper handling
+			throw new Error(
+				`Failed to compare frames: ${error instanceof Error ? error.message : String(error)}`,
+			);
 		}
 	}
 
@@ -225,6 +228,15 @@ export class SlideDetector {
 
 	private getEdgeStrength(img: JimpInstance, x: number, y: number): number {
 		const getPixel = (px: number, py: number) => {
+			// Bounds checking to prevent buffer overruns
+			if (
+				px < 0 ||
+				px >= img.bitmap.width ||
+				py < 0 ||
+				py >= img.bitmap.height
+			) {
+				return 0; // Return default value for out-of-bounds coordinates
+			}
 			const idx = (py * img.bitmap.width + px) * 4;
 			return img.bitmap.data[idx];
 		};

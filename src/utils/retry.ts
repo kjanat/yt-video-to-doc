@@ -54,14 +54,24 @@ export async function withTimeout<T>(
 	timeoutMs: number,
 	errorMessage = "Operation timed out",
 ): Promise<T> {
+	let timeoutId: NodeJS.Timeout | undefined;
+
 	const timeoutPromise = new Promise<never>((_, reject) => {
-		const id = setTimeout(() => {
-			clearTimeout(id);
+		timeoutId = setTimeout(() => {
 			reject(new Error(errorMessage));
 		}, timeoutMs);
 	});
 
-	return Promise.race([fn(), timeoutPromise]);
+	const promise = Promise.race([fn(), timeoutPromise]);
+
+	try {
+		const result = await promise;
+		if (timeoutId) clearTimeout(timeoutId);
+		return result;
+	} catch (error) {
+		if (timeoutId) clearTimeout(timeoutId);
+		throw error;
+	}
 }
 
 export async function withCleanup<T>(

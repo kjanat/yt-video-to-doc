@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { dirname } from "node:path";
 import { v4 as uuidv4 } from "uuid";
 import { DEFAULT_OPTIONS } from "../config/defaults";
 import { CleanupService } from "../services/cleanup-service";
@@ -50,7 +51,7 @@ export class VideoProcessor extends EventEmitter {
 
 		// Run startup cleanup
 		this.cleanupService.runStartupCleanup().catch((error: unknown) => {
-			logger.warn(`Startup cleanup failed: ${error}`);
+			logger.warn(`Startup cleanup failed: ${String(error)}`);
 		});
 	}
 
@@ -65,6 +66,9 @@ export class VideoProcessor extends EventEmitter {
 		};
 
 		const startTime = Date.now();
+
+		// Register job with cleanup service
+		this.cleanupService.registerActiveJob(job.id);
 
 		try {
 			// Download video with retry
@@ -180,7 +184,9 @@ export class VideoProcessor extends EventEmitter {
 			await this.cleanupService
 				.cleanJobFiles(job.id)
 				.catch((error: unknown) => {
-					logger.warn(`Failed to cleanup job files after success: ${error}`);
+					logger.warn(
+						`Failed to cleanup job files after success: ${String(error)}`,
+					);
 				});
 
 			const result: ProcessingResult = {
@@ -220,7 +226,7 @@ export class VideoProcessor extends EventEmitter {
 			await this.cleanupService
 				.cleanJobFiles(job.id)
 				.catch((cleanupError: unknown) => {
-					logger.error(`Failed to cleanup job files: ${cleanupError}`);
+					logger.error(`Failed to cleanup job files: ${String(cleanupError)}`);
 				});
 
 			throw error;
@@ -252,11 +258,11 @@ export class VideoProcessor extends EventEmitter {
 
 			// Clean up frames directory
 			if (framePath) {
-				const framesDir = framePath.substring(0, framePath.lastIndexOf("/"));
+				const framesDir = dirname(framePath);
 				await this.frameExtractor.cleanupFrames(framesDir);
 			}
 		} catch (error) {
-			logger.error(`Cleanup error: ${error}`);
+			logger.error(`Cleanup error: ${String(error)}`);
 		}
 	}
 }

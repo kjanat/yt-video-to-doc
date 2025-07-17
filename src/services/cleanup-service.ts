@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { formatBytes } from "../utils/format";
 import logger from "../utils/logger";
 
 export interface CleanupOptions {
@@ -171,7 +172,7 @@ export class CleanupService {
 			}
 
 			logger.info(
-				`Cleanup completed: ${result.filesDeleted} files, ${result.directoriesDeleted} directories, ${this.formatBytes(result.bytesFreed)} freed`,
+				`Cleanup completed: ${result.filesDeleted} files, ${result.directoriesDeleted} directories, ${formatBytes(result.bytesFreed)} freed`,
 			);
 		} catch (error) {
 			const errorMsg = `Cleanup failed: ${error}`;
@@ -337,18 +338,5 @@ export class CleanupService {
 			}
 		}
 		return false;
-	}
-
-	/**
-	 * Format bytes to human-readable string
-	 */
-	private formatBytes(bytes: number): string {
-		if (bytes === 0) return "0 Bytes";
-
-		const k = 1024;
-		const sizes = ["Bytes", "KB", "MB", "GB"];
-		const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-		return `${parseFloat((bytes / k ** i).toFixed(2))} ${sizes[i]}`;
 	}
 }

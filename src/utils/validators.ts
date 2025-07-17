@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import { ValidationError } from "./errors";
@@ -23,6 +24,9 @@ const YOUTUBE_DOMAINS = new Set([
 
 // YouTube video ID pattern - exactly 11 characters (base64url alphabet)
 const YOUTUBE_VIDEO_ID_PATTERN = /^[\w-]{11}$/;
+
+// ISO 639-1 language code pattern (2-letter) or with country (e.g., en-US)
+const ISO_LANGUAGE_CODE_PATTERN = /^[a-z]{2}(-[A-Z]{2})?$/;
 
 // More specific patterns that capture the video ID directly
 const YOUTUBE_PATTERNS = {
@@ -262,7 +266,28 @@ function validatePathLength(filePath: string, maxLength: number): void {
 		);
 	}
 
-	const components = filePath.split(path.sep).filter((comp) => comp.length > 0);
+	const allComponents = filePath.split(path.sep);
+
+	// Check for empty components (e.g., from consecutive slashes or dot segments)
+	const hasEmptyComponent = allComponents.some((comp, index) => {
+		// Allow empty string at beginning for absolute paths on Unix
+		if (
+			index === 0 &&
+			process.platform !== "win32" &&
+			path.isAbsolute(filePath)
+		) {
+			return false;
+		}
+		return comp === "";
+	});
+
+	if (hasEmptyComponent) {
+		throw new ValidationError(
+			"Path contains empty components (consecutive slashes or invalid segments)",
+		);
+	}
+
+	const components = allComponents.filter((comp) => comp.length > 0);
 
 	const longComponent = components.find((comp) => comp.length > 255);
 	if (longComponent) {
@@ -478,7 +503,7 @@ export const CommandOptionsSchema = z.object({
 		.min(2, "Language code must be at least 2 characters")
 		.max(10, "Language code cannot exceed 10 characters")
 		.regex(
-			/^[a-z]{2}(-[A-Z]{2})?$/,
+			ISO_LANGUAGE_CODE_PATTERN,
 			"Language must be a valid ISO code (e.g., 'en' or 'en-US')",
 		)
 		.optional(),
@@ -518,7 +543,7 @@ export function validateCommandOptions(
 			validated.temp = sanitizeFilePath(validated.temp, {
 				allowAbsolute: false,
 				allowHidden: false,
-				basePath: process.env.TMPDIR || "/tmp",
+				basePath: process.env.TMPDIR || tmpdir(),
 			});
 		}
 
@@ -778,10 +803,7 @@ export function validateFileExtension(
  * Validates that a string is a valid ISO language code
  */
 export function validateLanguageCode(code: string): string {
-	// ISO 639-1 (2-letter) or ISO 639-1 with country (e.g., en-US)
-	const pattern = /^[a-z]{2}(-[A-Z]{2})?$/;
-
-	if (!pattern.test(code)) {
+	if (!ISO_LANGUAGE_CODE_PATTERN.test(code)) {
 		throw new ValidationError(
 			`Invalid language code "${code}". Use ISO 639-1 format (e.g., "en" or "en-US")`,
 		);

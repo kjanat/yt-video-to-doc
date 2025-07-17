@@ -24,7 +24,16 @@
         "kind": "test",
         "isDefault": true
       },
-      "problemMatcher": [],
+      "problemMatcher": {
+        "owner": "vitest",
+        "fileLocation": ["relative", "${workspaceFolder}"],
+        "pattern": {
+          "regexp": "^\\s*❯\\s+(.*):(\\d+):(\\d+)$",
+          "file": 1,
+          "line": 2,
+          "column": 3
+        }
+      },
       "presentation": {
         "reveal": "always"
       }

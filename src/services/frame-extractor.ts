@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
+import ffprobeInstaller from "@ffprobe-installer/ffprobe";
 import {
 	PROGRESS_EXTRACT_END,
 	PROGRESS_EXTRACT_START,
@@ -61,7 +62,17 @@ export class FrameExtractor {
 		const files = await fs.readdir(framesDir);
 		const frameFiles = files
 			.filter((f) => f.endsWith(".png"))
+			.filter((f) => {
+				// Validate frame file matches expected pattern
+				const match = f.match(/frame-(\d+)\.png$/);
+				if (!match) {
+					logger.warn(`Skipping file with unexpected name format: ${f}`);
+					return false;
+				}
+				return true;
+			})
 			.sort((a, b) => {
+				// Extract frame numbers - we know they match the pattern from filter above
 				const numA = parseInt(a.match(/frame-(\d+)/)?.[1] || "0");
 				const numB = parseInt(b.match(/frame-(\d+)/)?.[1] || "0");
 				return numA - numB;
@@ -156,7 +167,7 @@ export class FrameExtractor {
 	async getVideoDuration(videoPath: string): Promise<number> {
 		try {
 			// Use ffprobe to get video duration
-			const ffprobePath = this.ffmpegPath.replace("ffmpeg", "ffprobe");
+			const ffprobePath = ffprobeInstaller.path;
 			const result = await SafeCommandExecutor.execute(ffprobePath, [
 				"-v",
 				"error",

@@ -4,8 +4,8 @@ set -e
 echo "🚀 Setting up development environment..."
 
 # Check Node.js version
-NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
-if [ "$NODE_VERSION" -lt 20 ]; then
+NODE_VERSION=$(node -v | grep -oE 'v([0-9]+)' | grep -oE '[0-9]+' | head -1)
+if [ -z "$NODE_VERSION" ] || [ "$NODE_VERSION" -lt 20 ]; then
   echo "❌ Node.js 20 or higher is required. Current version: $(node -v)"
   exit 1
 fi

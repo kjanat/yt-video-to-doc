@@ -39,11 +39,11 @@ const parseEnv = () => {
 		return envSchema.parse(process.env);
 	} catch (error) {
 		if (error instanceof z.ZodError) {
-			console.error("❌ Invalid environment configuration:");
+			const errorMessage = ["Invalid environment configuration:"];
 			for (const err of error.issues) {
-				console.error(`  - ${err.path.join(".")}: ${err.message}`);
+				errorMessage.push(`  - ${err.path.join(".")}: ${err.message}`);
 			}
-			process.exit(1);
+			throw new Error(errorMessage.join("\n"));
 		}
 		throw error;
 	}

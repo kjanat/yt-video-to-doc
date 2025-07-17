@@ -37,6 +37,7 @@
 	"engineStrict": true,
 	"dependencies": {
 		"@ffmpeg-installer/ffmpeg": "^1.1.0",
+		"@ffprobe-installer/ffprobe": "^2.1.2",
 		"@jimp/diff": "^1.6.0",
 		"chalk": "^5.4.1",
 		"commander": "^14.0.0",

@@ -20,6 +20,7 @@ import { VideoProcessor } from "./core/video-processor";
 import { CleanupService } from "./services/cleanup-service";
 import type { ConvertCommandOptions, ProcessingOptions } from "./types";
 import { ValidationError } from "./utils/errors";
+import { formatBytes } from "./utils/format";
 import { validateCommandOptions, validateYouTubeUrl } from "./utils/validators";
 
 const program = new Command();
@@ -206,16 +207,6 @@ program
 	});
 
 // Helper functions
-function formatBytes(bytes: number): string {
-	if (bytes === 0) return "0 Bytes";
-
-	const k = 1024;
-	const sizes = ["Bytes", "KB", "MB", "GB"];
-	const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-	return `${parseFloat((bytes / k ** i).toFixed(2))} ${sizes[i]}`;
-}
-
 function formatDuration(seconds: number): string {
 	const hours = Math.floor(seconds / SECONDS_PER_HOUR);
 	const minutes = Math.floor((seconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE);

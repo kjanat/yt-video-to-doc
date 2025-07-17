@@ -7,6 +7,13 @@ export class DocumentGenerator {
 	private outputDir: string;
 
 	constructor(outputDir: string) {
+		if (
+			!outputDir ||
+			typeof outputDir !== "string" ||
+			outputDir.trim() === ""
+		) {
+			throw new Error("Output directory must be a non-empty string");
+		}
 		this.outputDir = outputDir;
 	}
 
@@ -77,11 +84,15 @@ export class DocumentGenerator {
 			}
 
 			// Add frame reference
-			const representativeFrame =
-				slide.frames[Math.floor(slide.frames.length / 2)];
-			lines.push(
-				`> Frame: ${representativeFrame.frameNumber} at ${this.formatTimestamp(representativeFrame.timestamp)}`,
-			);
+			if (slide.frames && slide.frames.length > 0) {
+				const representativeFrame =
+					slide.frames[Math.floor(slide.frames.length / 2)];
+				lines.push(
+					`> Frame: ${representativeFrame.frameNumber} at ${this.formatTimestamp(representativeFrame.timestamp)}`,
+				);
+			} else {
+				lines.push("> No frames available for this slide");
+			}
 			lines.push("");
 			lines.push("---");
 			lines.push("");
