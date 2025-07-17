@@ -1,5 +1,8 @@
 {
-	"*.{ts,tsx,js,jsx}": ["pnpm run format", "pnpm run lint:fix"],
-	"*.{json,md,yml,yaml}": ["pnpm run format"],
-	"package.json": ["pnpm run format"]
+	"*.{ts,tsx,js,jsx}": [
+		"pnpm run format --no-errors-on-unmatched",
+		"pnpm run lint:fix --no-errors-on-unmatched"
+	],
+	"*.{json,md,yml,yaml}": ["pnpm run format --no-errors-on-unmatched"],
+	"package.json": ["pnpm run format --no-errors-on-unmatched"]
 }
