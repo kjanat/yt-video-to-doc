@@ -73,8 +73,11 @@ export class FrameExtractor {
 			})
 			.sort((a, b) => {
 				// Extract frame numbers - we know they match the pattern from filter above
-				const numA = parseInt(a.match(/frame-(\d+)/)?.[1] || "0");
-				const numB = parseInt(b.match(/frame-(\d+)/)?.[1] || "0");
+				const matchA = a.match(/frame-(\d+)/);
+				const matchB = b.match(/frame-(\d+)/);
+				// These should always match because we filtered above, but satisfy the linter
+				const numA = matchA ? parseInt(matchA[1], 10) : 0;
+				const numB = matchB ? parseInt(matchB[1], 10) : 0;
 				return numA - numB;
 			});
 
