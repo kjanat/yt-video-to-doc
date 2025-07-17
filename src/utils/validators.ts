@@ -37,6 +37,73 @@ const YOUTUBE_PATTERNS = {
 };
 
 /**
+ * Validate basic URL structure
+ */
+function validateUrlStructure(url: string): string {
+	if (!url || typeof url !== "string") {
+		throw new ValidationError("URL must be a non-empty string");
+	}
+
+	const normalizedUrl = url.trim();
+
+	if (!normalizedUrl.match(/^https?:\/\//i)) {
+		throw new ValidationError("URL must start with http:// or https://");
+	}
+
+	return normalizedUrl;
+}
+
+/**
+ * Extract video ID from short YouTube URL (youtu.be)
+ */
+function extractShortUrlVideoId(url: string): string | null {
+	const match = url.match(YOUTUBE_PATTERNS.short);
+	return match?.[1] || null;
+}
+
+/**
+ * Extract video ID from standard YouTube URL
+ */
+function extractStandardUrlVideoId(url: string): string | null {
+	const patterns = [
+		YOUTUBE_PATTERNS.watch,
+		YOUTUBE_PATTERNS.embed,
+		YOUTUBE_PATTERNS.v,
+	];
+
+	for (const pattern of patterns) {
+		const match = url.match(pattern);
+		if (match?.[1]) {
+			return match[1];
+		}
+	}
+
+	return null;
+}
+
+/**
+ * Clean and validate video ID
+ */
+function cleanAndValidateVideoId(videoId: string | null): string {
+	if (!videoId) {
+		throw new ValidationError(
+			"Invalid YouTube video ID. Could not extract a valid 11-character video ID from the URL.",
+		);
+	}
+
+	// Remove any trailing parameters
+	const cleanedId = videoId.split(/[?&#]/)[0];
+
+	if (!YOUTUBE_VIDEO_ID_PATTERN.test(cleanedId)) {
+		throw new ValidationError(
+			"Invalid YouTube video ID. Could not extract a valid 11-character video ID from the URL.",
+		);
+	}
+
+	return cleanedId;
+}
+
+/**
  * Validates and normalizes a YouTube URL
  * Returns both the validated URL and extracted video ID for convenience
  */
@@ -44,20 +111,8 @@ export function validateYouTubeUrl(url: string): {
 	url: string;
 	videoId: string;
 } {
-	// Input validation - fail fast for obviously invalid inputs
-	if (!url || typeof url !== "string") {
-		throw new ValidationError("URL must be a non-empty string");
-	}
-
-	// Normalize the URL by trimming whitespace
-	const normalizedUrl = url.trim();
-
-	// Early validation for basic URL structure
-	if (!normalizedUrl.match(/^https?:\/\//i)) {
-		throw new ValidationError("URL must start with http:// or https://");
-	}
-
 	try {
+		const normalizedUrl = validateUrlStructure(url);
 		const urlObj = new URL(normalizedUrl);
 		const hostname = urlObj.hostname.toLowerCase();
 
@@ -69,45 +124,15 @@ export function validateYouTubeUrl(url: string): {
 		}
 
 		// Extract video ID based on URL format
-		let videoId: string | null = null;
+		const videoId =
+			hostname === "youtu.be"
+				? extractShortUrlVideoId(normalizedUrl)
+				: extractStandardUrlVideoId(normalizedUrl);
 
-		if (hostname === "youtu.be") {
-			// Short URL format: extract from pathname
-			const match = normalizedUrl.match(YOUTUBE_PATTERNS.short);
-			videoId = match?.[1] || null;
-		} else {
-			// Try each pattern until we find a match
-			// Order matters: check most common patterns first
-			const patterns = [
-				YOUTUBE_PATTERNS.watch,
-				YOUTUBE_PATTERNS.embed,
-				YOUTUBE_PATTERNS.v,
-			];
+		// Clean and validate the video ID
+		const cleanVideoId = cleanAndValidateVideoId(videoId);
 
-			for (const pattern of patterns) {
-				const match = normalizedUrl.match(pattern);
-				if (match?.[1]) {
-					videoId = match[1];
-					break;
-				}
-			}
-		}
-
-		// Clean up video ID - remove any trailing parameters
-		if (videoId) {
-			videoId = videoId.split(/[?&#]/)[0];
-		}
-
-		// Validate the extracted video ID
-		if (!videoId || !YOUTUBE_VIDEO_ID_PATTERN.test(videoId)) {
-			throw new ValidationError(
-				"Invalid YouTube video ID. Could not extract a valid 11-character video ID from the URL.",
-			);
-		}
-
-		// Return both the validated URL and the extracted video ID
-		// This saves the caller from having to parse it again
-		return { url: normalizedUrl, videoId };
+		return { url: normalizedUrl, videoId: cleanVideoId };
 	} catch (error) {
 		if (error instanceof ValidationError) {
 			throw error;
@@ -126,8 +151,15 @@ export function validateYouTubeUrl(url: string): {
  * which is more secure for path validation
  */
 
+// Type for platform-specific path configuration
+interface PathConfig {
+	maxLength: number;
+	invalidChars: Set<string>;
+	reservedNames: Set<string>;
+}
+
 // Platform-specific path settings
-const PATH_CONFIG = {
+const PATH_CONFIG: Record<"win32" | "posix", PathConfig> = {
 	win32: {
 		maxLength: 260, // Windows MAX_PATH
 		invalidChars: new Set(["<", ">", ":", '"', "|", "?", "*"]),
@@ -171,6 +203,76 @@ export interface SanitizeOptions {
 }
 
 /**
+ * Remove dangerous characters from path
+ */
+function cleanPath(filePath: string): string {
+	return filePath
+		.trim()
+		.replace(/\0/g, "") // Remove null bytes immediately
+		.replace(/[\r\n]/g, ""); // Remove line breaks that could cause issues
+}
+
+/**
+ * Decode URL encoding in path
+ */
+function decodePathSafely(filePath: string): string {
+	try {
+		return decodeURIComponent(filePath);
+	} catch {
+		throw new ValidationError("File path contains invalid URL encoding");
+	}
+}
+
+/**
+ * Normalize path separators for the current platform
+ */
+function normalizePathSeparators(filePath: string): string {
+	if (process.platform === "win32") {
+		return filePath.replace(/\//g, "\\");
+	}
+	return filePath.replace(/\\/g, "/");
+}
+
+/**
+ * Validate relative path doesn't escape base directory
+ */
+function validateRelativePath(sanitized: string, basePath: string): string {
+	const resolved = path.resolve(basePath, sanitized);
+	const normalizedBase = path.resolve(basePath);
+
+	// Security check: ensure the resolved path is within the base directory
+	if (
+		!resolved.startsWith(normalizedBase + path.sep) &&
+		resolved !== normalizedBase
+	) {
+		throw new ValidationError("Path would escape the base directory");
+	}
+
+	// Convert back to relative path
+	return path.relative(basePath, resolved);
+}
+
+/**
+ * Validate path length constraints
+ */
+function validatePathLength(filePath: string, maxLength: number): void {
+	if (filePath.length > maxLength) {
+		throw new ValidationError(
+			`Path exceeds maximum length of ${maxLength} characters`,
+		);
+	}
+
+	const components = filePath.split(path.sep).filter((comp) => comp.length > 0);
+
+	const longComponent = components.find((comp) => comp.length > 255);
+	if (longComponent) {
+		throw new ValidationError(
+			"Path component exceeds maximum length of 255 characters",
+		);
+	}
+}
+
+/**
  * Sanitizes a file path to prevent directory traversal attacks
  * Uses a secure-by-default approach with explicit options
  */
@@ -192,79 +294,148 @@ export function sanitizeFilePath(
 		throw new ValidationError("File path must be a non-empty string");
 	}
 
-	// First pass: Remove obvious attack vectors
-	let sanitized = filePath
-		.trim()
-		.replace(/\0/g, "") // Remove null bytes immediately
-		.replace(/[\r\n]/g, ""); // Remove line breaks that could cause issues
-
-	// Decode any URL encoding to catch encoded traversal attempts
-	try {
-		sanitized = decodeURIComponent(sanitized);
-	} catch {
-		// If decoding fails, the path is likely malformed
-		throw new ValidationError("File path contains invalid URL encoding");
-	}
-
-	// Normalize path separators based on platform
-	if (process.platform === "win32") {
-		// Windows: Convert forward slashes to backslashes for consistency
-		sanitized = sanitized.replace(/\//g, "\\");
-	} else {
-		// Unix: Convert backslashes to forward slashes
-		sanitized = sanitized.replace(/\\/g, "/");
-	}
-
-	// Use Node's path.normalize to resolve . and .. safely
-	// This is more reliable than regex replacement
+	// Clean and normalize the path
+	let sanitized = cleanPath(filePath);
+	sanitized = decodePathSafely(sanitized);
+	sanitized = normalizePathSeparators(sanitized);
 	sanitized = path.normalize(sanitized);
 
-	// Check if the path is absolute
+	// Handle absolute vs relative paths
 	if (path.isAbsolute(sanitized)) {
 		if (!allowAbsolute) {
 			throw new ValidationError("Absolute paths are not allowed");
 		}
 	} else {
-		// For relative paths, resolve against the base path
-		// This ensures the path doesn't escape the intended directory
-		const resolved = path.resolve(basePath, sanitized);
-		const normalizedBase = path.resolve(basePath);
-
-		// Security check: ensure the resolved path is within the base directory
-		if (
-			!resolved.startsWith(normalizedBase + path.sep) &&
-			resolved !== normalizedBase
-		) {
-			throw new ValidationError("Path would escape the base directory");
-		}
-
-		// Convert back to relative path
-		sanitized = path.relative(basePath, resolved);
+		sanitized = validateRelativePath(sanitized, basePath);
 	}
 
-	// Platform-specific validation
+	// Run validation checks
 	validatePathForPlatform(sanitized, allowHidden);
+	validatePathLength(sanitized, maxLength);
 
-	// Length validation
-	if (sanitized.length > maxLength) {
+	return sanitized;
+}
+
+/**
+ * Check if a path component is a hidden file
+ */
+function isHiddenComponent(component: string): boolean {
+	return component.startsWith(".") && component !== "." && component !== "..";
+}
+
+/**
+ * Validate hidden files in path
+ */
+function validateHiddenFiles(filePath: string, allowHidden: boolean): void {
+	if (allowHidden) return;
+
+	const components = filePath.split(path.sep);
+	const hiddenComponent = components.find(isHiddenComponent);
+
+	if (hiddenComponent) {
+		throw new ValidationError("Hidden files are not allowed");
+	}
+}
+
+/**
+ * Check if character is a control character
+ */
+function isControlCharacter(charCode: number): boolean {
+	return charCode >= 0 && charCode <= 31;
+}
+
+/**
+ * Validate a single character for Windows paths
+ */
+function validateWindowsCharacter(
+	char: string,
+	invalidChars: Set<string>,
+): void {
+	const charCode = char.charCodeAt(0);
+
+	if (isControlCharacter(charCode)) {
 		throw new ValidationError(
-			`Path exceeds maximum length of ${maxLength} characters`,
+			`Path contains control character (ASCII ${charCode})`,
 		);
 	}
 
-	// Validate individual path components
-	const components = sanitized
-		.split(path.sep)
-		.filter((comp) => comp.length > 0);
-	for (const component of components) {
-		if (component.length > 255) {
-			throw new ValidationError(
-				"Path component exceeds maximum length of 255 characters",
-			);
-		}
+	if (invalidChars.has(char)) {
+		throw new ValidationError(`Path contains invalid character: "${char}"`);
+	}
+}
+
+/**
+ * Check if component is a Windows drive letter
+ */
+function isDriveLetter(component: string, index: number): boolean {
+	return index === 0 && /^[a-zA-Z]:$/.test(component);
+}
+
+/**
+ * Validate Windows reserved names
+ */
+function validateWindowsReservedName(
+	component: string,
+	reservedNames: Set<string>,
+): void {
+	const upperComponent = component.toUpperCase();
+	const nameWithoutExt = upperComponent.split(".")[0];
+
+	if (reservedNames.has(nameWithoutExt)) {
+		throw new ValidationError(
+			`Path contains Windows reserved name: ${component}`,
+		);
+	}
+}
+
+/**
+ * Validate Windows path component
+ */
+function validateWindowsComponent(
+	component: string,
+	index: number,
+	config: PathConfig,
+): void {
+	if (isDriveLetter(component, index)) {
+		return;
 	}
 
-	return sanitized;
+	// Check each character
+	for (const char of component) {
+		validateWindowsCharacter(char, config.invalidChars);
+	}
+
+	// Check reserved names
+	validateWindowsReservedName(component, config.reservedNames);
+
+	// Check for trailing dots or spaces
+	if (/[. ]$/.test(component)) {
+		throw new ValidationError(
+			"Path components cannot end with dots or spaces on Windows",
+		);
+	}
+}
+
+/**
+ * Validate Unix path
+ */
+function validateUnixPath(filePath: string, config: PathConfig): void {
+	for (const char of filePath) {
+		if (config.invalidChars.has(char)) {
+			throw new ValidationError(`Path contains invalid character (null byte)`);
+		}
+	}
+}
+
+/**
+ * Validate Windows path
+ */
+function validateWindowsPath(filePath: string, config: PathConfig): void {
+	const components = filePath.split(path.sep);
+
+	components.forEach((component, index) => {
+		validateWindowsComponent(component, index, config);
+	});
 }
 
 /**
@@ -275,76 +446,13 @@ function validatePathForPlatform(filePath: string, allowHidden: boolean): void {
 	const config = PATH_CONFIG[platform];
 
 	// Check for hidden files
-	if (!allowHidden) {
-		const components = filePath.split(path.sep);
-		for (const component of components) {
-			if (
-				component.startsWith(".") &&
-				component !== "." &&
-				component !== ".."
-			) {
-				throw new ValidationError("Hidden files are not allowed");
-			}
-		}
-	}
+	validateHiddenFiles(filePath, allowHidden);
 
-	// Platform-specific character validation
+	// Platform-specific validation
 	if (platform === "win32") {
-		// Windows-specific validation
-		const components = filePath.split(path.sep);
-
-		for (let i = 0; i < components.length; i++) {
-			const component = components[i];
-
-			// Skip drive letters
-			if (i === 0 && /^[a-zA-Z]:$/.test(component)) {
-				continue;
-			}
-
-			// Check for invalid characters
-			for (const char of component) {
-				const charCode = char.charCodeAt(0);
-
-				// Control characters (0-31)
-				if (charCode >= 0 && charCode <= 31) {
-					throw new ValidationError(
-						`Path contains control character (ASCII ${charCode})`,
-					);
-				}
-
-				// Windows-specific invalid characters
-				if (config.invalidChars.has(char)) {
-					throw new ValidationError(
-						`Path contains invalid character: "${char}"`,
-					);
-				}
-			}
-
-			// Check for reserved names
-			const upperComponent = component.toUpperCase();
-			const nameWithoutExt = upperComponent.split(".")[0];
-			if (config.reservedNames.has(nameWithoutExt)) {
-				throw new ValidationError(
-					`Path contains Windows reserved name: ${component}`,
-				);
-			}
-
-			// Check for trailing dots or spaces
-			if (/[. ]$/.test(component)) {
-				throw new ValidationError(
-					"Path components cannot end with dots or spaces on Windows",
-				);
-			}
-		}
+		validateWindowsPath(filePath, config);
 	} else {
-		// Unix validation - mainly check for null bytes
-		for (const char of filePath) {
-			if (config.invalidChars.has(char)) {
-				throw new ValidationError(
-					`Path contains invalid character (null byte)`,
-				);
-			}
-		}
+		validateUnixPath(filePath, config);
 	}
 }
 
@@ -475,6 +583,86 @@ const REQUIRED_TOOLS: EnvironmentRequirement[] = [
 ];
 
 /**
+ * Check if a tool exists
+ */
+async function checkToolExists(
+	tool: EnvironmentRequirement,
+	commandExists?: (cmd: string) => Promise<boolean>,
+): Promise<boolean> {
+	if (!commandExists) {
+		return true; // Assume exists if no checker provided
+	}
+
+	const exists = await commandExists(tool.command || tool.name);
+	return exists;
+}
+
+/**
+ * Extract version from command output
+ */
+function extractVersion(output: string, pattern: RegExp): string | null {
+	const match = output.match(pattern);
+	return match?.[1] || null;
+}
+
+/**
+ * Validate tool version
+ */
+async function validateToolVersion(
+	tool: EnvironmentRequirement,
+	getCommandVersion: (cmd: string) => Promise<string | null>,
+): Promise<string | null> {
+	if (!tool.versionPattern || !tool.minVersion) {
+		return null;
+	}
+
+	const versionOutput = await getCommandVersion(tool.command || tool.name);
+	if (!versionOutput) {
+		return null;
+	}
+
+	const version = extractVersion(versionOutput, tool.versionPattern);
+	if (!version) {
+		return null;
+	}
+
+	if (!compareVersions(version, tool.minVersion)) {
+		return `${tool.name} version ${version} is too old. ${tool.message}`;
+	}
+
+	return null;
+}
+
+/**
+ * Validate a single tool
+ */
+async function validateTool(
+	tool: EnvironmentRequirement,
+	commandExists?: (cmd: string) => Promise<boolean>,
+	getCommandVersion?: (cmd: string) => Promise<string | null>,
+): Promise<string | null> {
+	try {
+		// Check existence
+		const exists = await checkToolExists(tool, commandExists);
+		if (!exists) {
+			return tool.message;
+		}
+
+		// Check version if version checker is provided
+		if (getCommandVersion) {
+			const versionError = await validateToolVersion(tool, getCommandVersion);
+			if (versionError) {
+				return versionError;
+			}
+		}
+
+		return null;
+	} catch {
+		return tool.message;
+	}
+}
+
+/**
  * Validates that the required environment tools are available
  * This is a more robust version that checks versions and availability
  */
@@ -482,41 +670,12 @@ export async function validateEnvironment(
 	commandExists?: (cmd: string) => Promise<boolean>,
 	getCommandVersion?: (cmd: string) => Promise<string | null>,
 ): Promise<void> {
-	const errors: string[] = [];
+	const validationPromises = REQUIRED_TOOLS.map((tool) =>
+		validateTool(tool, commandExists, getCommandVersion),
+	);
 
-	for (const tool of REQUIRED_TOOLS) {
-		try {
-			// If commandExists function is provided, use it
-			if (commandExists) {
-				const exists = await commandExists(tool.command || tool.name);
-				if (!exists) {
-					errors.push(tool.message);
-					continue;
-				}
-			} else {
-				// Fallback to basic check
-			}
-
-			// Check version if getCommandVersion is provided
-			if (getCommandVersion && tool.versionPattern && tool.minVersion) {
-				const versionOutput = await getCommandVersion(
-					tool.command || tool.name,
-				);
-				if (versionOutput) {
-					const match = versionOutput.match(tool.versionPattern);
-					if (match?.[1]) {
-						if (!compareVersions(match[1], tool.minVersion)) {
-							errors.push(
-								`${tool.name} version ${match[1]} is too old. ${tool.message}`,
-							);
-						}
-					}
-				}
-			}
-		} catch {
-			errors.push(tool.message);
-		}
-	}
+	const results = await Promise.all(validationPromises);
+	const errors = results.filter((error): error is string => error !== null);
 
 	if (errors.length > 0) {
 		throw new ValidationError(

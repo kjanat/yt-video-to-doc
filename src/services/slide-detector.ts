@@ -236,79 +236,159 @@ export class SlideDetector {
 		return Math.sqrt(gx * gx + gy * gy);
 	}
 
-	private findSlideBoundaries(differences: number[]): number[] {
-		const boundaries: number[] = [0]; // First frame is always a boundary
-
-		// Calculate statistics
+	private calculateStatistics(differences: number[]): {
+		percentile25: number;
+		percentile50: number;
+		percentile75: number;
+		mean: number;
+		stdDev: number;
+	} {
 		const sortedDiffs = [...differences].sort((a, b) => a - b);
-		const percentile25 = sortedDiffs[Math.floor(sortedDiffs.length * 0.25)];
-		const percentile50 = sortedDiffs[Math.floor(sortedDiffs.length * 0.5)];
-		const percentile75 = sortedDiffs[Math.floor(sortedDiffs.length * 0.75)];
-
-		// Calculate mean and standard deviation
 		const mean = differences.reduce((a, b) => a + b, 0) / differences.length;
 		const variance =
 			differences.reduce((a, b) => a + (b - mean) ** 2, 0) / differences.length;
-		const stdDev = Math.sqrt(variance);
 
-		// Use multiple thresholds for different detection strategies
+		return {
+			percentile25: sortedDiffs[Math.floor(sortedDiffs.length * 0.25)],
+			percentile50: sortedDiffs[Math.floor(sortedDiffs.length * 0.5)],
+			percentile75: sortedDiffs[Math.floor(sortedDiffs.length * 0.75)],
+			mean,
+			stdDev: Math.sqrt(variance),
+		};
+	}
+
+	private calculateThresholds(stats: {
+		percentile25: number;
+		percentile50: number;
+		percentile75: number;
+		mean: number;
+		stdDev: number;
+	}): {
+		conservative: number;
+		moderate: number;
+		aggressive: number;
+		veryAggressive: number;
+	} {
 		const thresholds = {
-			conservative: Math.max(this.threshold, percentile75),
-			moderate: Math.max(this.threshold * 0.8, percentile50 * 1.5),
-			aggressive: Math.max(this.threshold * 0.6, mean + stdDev),
-			veryAggressive: Math.max(this.threshold * 0.4, percentile25 * 2),
+			conservative: Math.max(this.threshold, stats.percentile75),
+			moderate: Math.max(this.threshold * 0.8, stats.percentile50 * 1.5),
+			aggressive: Math.max(this.threshold * 0.6, stats.mean + stats.stdDev),
+			veryAggressive: Math.max(this.threshold * 0.4, stats.percentile25 * 2),
 		};
 
 		logger.info(
-			`Thresholds - Conservative: ${thresholds.conservative.toFixed(3)}, Moderate: ${thresholds.moderate.toFixed(3)}, Aggressive: ${thresholds.aggressive.toFixed(3)}, Very Aggressive: ${thresholds.veryAggressive.toFixed(3)}`,
+			`Thresholds - Conservative: ${thresholds.conservative.toFixed(3)}, ` +
+				`Moderate: ${thresholds.moderate.toFixed(3)}, ` +
+				`Aggressive: ${thresholds.aggressive.toFixed(3)}, ` +
+				`Very Aggressive: ${thresholds.veryAggressive.toFixed(3)}`,
 		);
 
-		// Use the very aggressive threshold for presentations with many slides
-		const activeThreshold = thresholds.veryAggressive;
+		return thresholds;
+	}
 
-		// Find peaks using sliding window
+	private isLocalPeak(
+		differences: number[],
+		index: number,
+		windowSize: number,
+	): boolean {
+		if (index < windowSize || index >= differences.length - windowSize) {
+			return false;
+		}
+
+		const window = differences.slice(
+			index - windowSize,
+			index + windowSize + 1,
+		);
+		const centerValue = differences[index];
+		const windowMax = Math.max(...window);
+
+		return centerValue === windowMax;
+	}
+
+	private findPeakBoundaries(
+		differences: number[],
+		threshold: number,
+		existingBoundaries: number[],
+	): number[] {
+		const boundaries: number[] = [];
 		const windowSize = 3;
-		for (let i = windowSize; i < differences.length - windowSize; i++) {
-			const window = differences.slice(i - windowSize, i + windowSize + 1);
-			const centerValue = differences[i];
-			const windowMax = Math.max(...window);
 
-			// Check if this is a local peak
-			if (centerValue === windowMax && centerValue > activeThreshold) {
-				const lastBoundary = boundaries[boundaries.length - 1];
-				// Ensure minimum distance between slides (at least 1 frame)
+		for (let i = windowSize; i < differences.length - windowSize; i++) {
+			if (
+				this.isLocalPeak(differences, i, windowSize) &&
+				differences[i] > threshold
+			) {
+				const lastBoundary =
+					existingBoundaries[existingBoundaries.length - 1] || 0;
 				if (i + 1 - lastBoundary >= 1) {
 					boundaries.push(i + 1);
+					existingBoundaries.push(i + 1);
 				}
 			}
 		}
 
-		// Also check for sustained high differences (scene changes)
+		return boundaries;
+	}
+
+	private findSustainedHighBoundaries(
+		differences: number[],
+		threshold: number,
+		existingBoundaries: number[],
+	): number[] {
+		const boundaries: number[] = [];
 		let highDiffStart = -1;
+
 		for (let i = 0; i < differences.length; i++) {
-			if (differences[i] > activeThreshold) {
+			if (differences[i] > threshold) {
 				if (highDiffStart === -1) {
 					highDiffStart = i;
 				}
 			} else if (highDiffStart !== -1) {
-				// End of high difference region
 				const midPoint = Math.floor((highDiffStart + i) / 2);
-				const lastBoundary = boundaries[boundaries.length - 1];
+				const lastBoundary =
+					existingBoundaries[existingBoundaries.length - 1] || 0;
+
 				if (
 					midPoint + 1 - lastBoundary >= 2 &&
-					!boundaries.includes(midPoint + 1)
+					!existingBoundaries.includes(midPoint + 1)
 				) {
 					boundaries.push(midPoint + 1);
+					existingBoundaries.push(midPoint + 1);
 				}
 				highDiffStart = -1;
 			}
 		}
 
-		// Sort boundaries and remove duplicates
-		boundaries.sort((a, b) => a - b);
-		const uniqueBoundaries = [...new Set(boundaries)];
+		return boundaries;
+	}
 
-		// Add last frame as boundary if not already there
+	private findSlideBoundaries(differences: number[]): number[] {
+		const boundaries: number[] = [0]; // First frame is always a boundary
+
+		// Calculate statistics and thresholds
+		const stats = this.calculateStatistics(differences);
+		const thresholds = this.calculateThresholds(stats);
+		const activeThreshold = thresholds.veryAggressive;
+
+		// Find boundaries using two methods
+		const peakBoundaries = this.findPeakBoundaries(
+			differences,
+			activeThreshold,
+			[...boundaries],
+		);
+		boundaries.push(...peakBoundaries);
+
+		const sustainedBoundaries = this.findSustainedHighBoundaries(
+			differences,
+			activeThreshold,
+			[...boundaries],
+		);
+		boundaries.push(...sustainedBoundaries);
+
+		// Sort and deduplicate
+		const uniqueBoundaries = [...new Set(boundaries)].sort((a, b) => a - b);
+
+		// Add last frame if not already there
 		if (uniqueBoundaries[uniqueBoundaries.length - 1] !== differences.length) {
 			uniqueBoundaries.push(differences.length);
 		}

@@ -43,6 +43,103 @@ export class CleanupService {
 	}
 
 	/**
+	 * Check if item should be processed for cleanup
+	 */
+	private shouldProcessItem(
+		item: { name: string },
+		excludePatterns: string[],
+		stats: { mtimeMs: number },
+		now: number,
+		maxAgeMs: number,
+	): { skip: boolean; reason?: string } {
+		// Skip if item matches exclude patterns
+		if (this.shouldExclude(item.name, excludePatterns)) {
+			return { skip: true, reason: `Skipping excluded item: ${item.name}` };
+		}
+
+		// Skip if item is part of an active job
+		if (this.isActiveJobFile(item.name)) {
+			return { skip: true, reason: `Skipping active job file: ${item.name}` };
+		}
+
+		// Skip if item is not old enough
+		const ageMs = now - stats.mtimeMs;
+		if (ageMs < maxAgeMs) {
+			const ageMinutes = Math.round(ageMs / 1000 / 60);
+			return {
+				skip: true,
+				reason: `Skipping recent item: ${item.name} (age: ${ageMinutes} minutes)`,
+			};
+		}
+
+		return { skip: false };
+	}
+
+	/**
+	 * Delete a single item (file or directory)
+	 */
+	private async deleteItem(
+		itemPath: string,
+		item: { isDirectory(): boolean },
+		stats: { size: number },
+		result: CleanupResult,
+	): Promise<void> {
+		if (item.isDirectory()) {
+			await this.cleanDirectory(itemPath, result);
+			result.directoriesDeleted++;
+		} else {
+			result.bytesFreed += stats.size;
+			await fs.unlink(itemPath);
+			result.filesDeleted++;
+			logger.debug(`Deleted file: ${itemPath}`);
+		}
+	}
+
+	/**
+	 * Process a single item for cleanup
+	 */
+	private async processItem(
+		item: { name: string; isDirectory(): boolean },
+		options: {
+			excludePatterns: string[];
+			dryRun: boolean;
+			now: number;
+			maxAgeMs: number;
+		},
+		result: CleanupResult,
+	): Promise<void> {
+		const itemPath = path.join(this.tempDir, item.name);
+
+		try {
+			const stats = await fs.stat(itemPath);
+
+			const { skip, reason } = this.shouldProcessItem(
+				item,
+				options.excludePatterns,
+				stats,
+				options.now,
+				options.maxAgeMs,
+			);
+
+			if (skip) {
+				if (reason) logger.debug(reason);
+				return;
+			}
+
+			// Clean up the item
+			if (options.dryRun) {
+				logger.info(`[DRY RUN] Would delete: ${itemPath}`);
+			} else {
+				await this.deleteItem(itemPath, item, stats, result);
+			}
+		} catch (error) {
+			const errorMsg = `Failed to clean ${itemPath}: ${error}`;
+			logger.error(errorMsg);
+			result.errors.push(errorMsg);
+		}
+	}
+
+	/**
 	 * Clean up old files in the temp directory
 	 */
 	async cleanOldFiles(options: CleanupOptions = {}): Promise<CleanupResult> {
@@ -64,53 +161,13 @@ export class CleanupService {
 			const now = Date.now();
 			const maxAgeMs = maxAgeHours * 60 * 60 * 1000;
 
+			// Process each item
 			for (const item of items) {
-				const itemPath = path.join(this.tempDir, item.name);
-
-				try {
-					// Skip if item matches exclude patterns
-					if (this.shouldExclude(item.name, excludePatterns)) {
-						logger.debug(`Skipping excluded item: ${item.name}`);
-						continue;
-					}
-
-					// Skip if item is part of an active job
-					if (this.isActiveJobFile(item.name)) {
-						logger.debug(`Skipping active job file: ${item.name}`);
-						continue;
-					}
-
-					// Get item stats
-					const stats = await fs.stat(itemPath);
-					const ageMs = now - stats.mtimeMs;
-
-					// Skip if item is not old enough
-					if (ageMs < maxAgeMs) {
-						logger.debug(
-							`Skipping recent item: ${item.name} (age: ${Math.round(ageMs / 1000 / 60)} minutes)`,
-						);
-						continue;
-					}
-
-					// Clean up the item
-					if (dryRun) {
-						logger.info(`[DRY RUN] Would delete: ${itemPath}`);
-					} else {
-						if (item.isDirectory()) {
-							await this.cleanDirectory(itemPath, result);
-							result.directoriesDeleted++;
-						} else {
-							result.bytesFreed += stats.size;
-							await fs.unlink(itemPath);
-							result.filesDeleted++;
-							logger.debug(`Deleted file: ${itemPath}`);
-						}
-					}
-				} catch (error) {
-					const errorMsg = `Failed to clean ${itemPath}: ${error}`;
-					logger.error(errorMsg);
-					result.errors.push(errorMsg);
-				}
+				await this.processItem(
+					item,
+					{ excludePatterns, dryRun, now, maxAgeMs },
+					result,
+				);
 			}
 
 			logger.info(
