@@ -15,7 +15,7 @@ Convert YouTube videos (especially presentations and slideshows) into structured
 
 ### System Requirements
 
-- Node.js 18+ 
+- Node.js 18+
 - Python 3.8+ (for yt-dlp)
 - FFmpeg
 - Tesseract OCR
@@ -54,8 +54,8 @@ Convert YouTube videos (especially presentations and slideshows) into structured
    Or manually:
 
    ```bash
-   npm install
-   npm run build
+   pnpm install
+   pnpm run build
    ```
 
 ## 🎯 Usage
@@ -65,13 +65,13 @@ Convert YouTube videos (especially presentations and slideshows) into structured
 Convert a YouTube video to text:
 
 ```bash
-npm run dev convert https://www.youtube.com/watch?v=VIDEO_ID
+pnpm run dev convert https://www.youtube.com/watch?v=VIDEO_ID
 ```
 
 ### Advanced Options
 
 ```bash
-npm run dev convert [url] [options]
+pnpm run dev convert [url] [options]
 
 Options:
   -i, --interval <seconds>   Frame extraction interval (default: 2)
@@ -85,35 +85,38 @@ Options:
 ### Examples
 
 Extract frames every 5 seconds:
+
 ```bash
-npm run dev convert https://youtube.com/watch?v=VIDEO_ID -i 5
+pnpm run dev convert https://youtube.com/watch?v=VIDEO_ID -i 5
 ```
 
 Use German OCR:
+
 ```bash
-npm run dev convert https://youtube.com/watch?v=VIDEO_ID -l deu
+pnpm run dev convert https://youtube.com/watch?v=VIDEO_ID -l deu
 ```
 
 Higher slide detection sensitivity:
+
 ```bash
-npm run dev convert https://youtube.com/watch?v=VIDEO_ID -t 0.2
+pnpm run dev convert https://youtube.com/watch?v=VIDEO_ID -t 0.2
 ```
 
 ### Test with Sample Video
 
 ```bash
-npm run dev test
+pnpm run dev test
 ```
 
 ### Clean Temporary Files
 
 ```bash
-npm run dev clean
+pnpm run dev clean
 ```
 
 ## 📁 Project Structure
 
-```
+```text
 yt-video-to-txt/
 ├── src/
 │   ├── core/
@@ -157,24 +160,31 @@ The generated markdown includes:
 - OCR-extracted text from each slide
 
 Example output structure:
+
 ```markdown
 # Video Title
 
 ---
+
 **Source:** https://youtube.com/watch?v=...
 **Duration:** 5m 23s
 **Generated:** 2024-01-15T10:30:00Z
+
 ---
 
 ## Table of Contents
+
 - [Slide 1](#slide-1)
 - [Slide 2](#slide-2)
 
 ## Slide 1
+
 **Time:** 0:00 - 0:15
 
 ### Content
+
 Introduction to Machine Learning
+
 - What is ML?
 - Types of algorithms
 
@@ -197,31 +207,31 @@ Introduction to Machine Learning
 ### Run in Development Mode
 
 ```bash
-npm run dev -- convert https://youtube.com/watch?v=VIDEO_ID
+pnpm run dev -- convert https://youtube.com/watch?v=VIDEO_ID
 ```
 
 ### Build
 
 ```bash
-npm run build
+pnpm run build
 ```
 
 ### Run Tests
 
 ```bash
-npm test
+pnpm test
 ```
 
 ### Lint & Type Check
 
 ```bash
-npm run lint
-npm run typecheck
+pnpm run lint
+pnpm run typecheck
 ```
 
 ## 🔮 Future Enhancements
 
-See `plan.md` for the full architecture design including:
+See [`plan.md`](plan.md) for the full architecture design including:
 
 - Audio transcription with speech-to-text
 - Multiple export formats (PDF, DOCX, HTML)

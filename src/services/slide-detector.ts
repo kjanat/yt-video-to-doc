@@ -1,93 +1,479 @@
-import { Jimp, diff } from 'jimp';
-import { Frame, Slide } from '../types';
-import logger from '../utils/logger';
+import { diff, Jimp } from "jimp";
+import type { Frame, Slide } from "../types";
+import logger from "../utils/logger";
+
+// Extend JimpClass with the plugin methods we use
+interface JimpInstance {
+	clone(): JimpInstance;
+	greyscale(): JimpInstance;
+	bitmap: {
+		width: number;
+		height: number;
+		data: Buffer;
+	};
+	scan(
+		x: number,
+		y: number,
+		w: number,
+		h: number,
+		cb: (x: number, y: number, idx: number) => void,
+	): void;
+	resize(options: { w: number; h: number }): void;
+}
 
 export class SlideDetector {
-  private threshold: number;
+	private threshold: number;
+	private minSlideFrames: number;
+	private histogramBins: number = 16;
 
-  constructor(threshold: number = 0.3) {
-    this.threshold = threshold;
-  }
+	constructor(threshold: number = 0.15, minSlideFrames: number = 1) {
+		this.threshold = threshold;
+		this.minSlideFrames = minSlideFrames;
+	}
 
-  async detectSlides(frames: Frame[]): Promise<Slide[]> {
-    if (frames.length === 0) return [];
+	async detectSlides(
+		frames: Frame[],
+		onProgress?: (percent: number) => void,
+	): Promise<Slide[]> {
+		if (frames.length === 0) return [];
 
-    logger.info(`Detecting slides from ${frames.length} frames`);
-    
-    const slides: Slide[] = [];
-    let currentSlideFrames: Frame[] = [frames[0]];
-    
-    for (let i = 1; i < frames.length; i++) {
-      const previousFrame = frames[i - 1];
-      const currentFrame = frames[i];
-      
-      const difference = await this.compareFrames(
-        previousFrame.imagePath,
-        currentFrame.imagePath
-      );
-      
-      if (difference > this.threshold) {
-        // New slide detected
-        slides.push(this.createSlide(currentSlideFrames));
-        currentSlideFrames = [currentFrame];
-        logger.debug(`New slide detected at frame ${i}, difference: ${difference.toFixed(3)}`);
-      } else {
-        // Same slide, add frame
-        currentSlideFrames.push(currentFrame);
-      }
-    }
-    
-    // Don't forget the last slide
-    if (currentSlideFrames.length > 0) {
-      slides.push(this.createSlide(currentSlideFrames));
-    }
-    
-    logger.info(`Detected ${slides.length} slides`);
-    return slides;
-  }
+		logger.info(`Slide detection from ${frames.length} frames`);
 
-  private async compareFrames(path1: string, path2: string): Promise<number> {
-    try {
-      const [img1, img2] = await Promise.all([
-        Jimp.read(path1),
-        Jimp.read(path2)
-      ]);
-      
-      // Resize to same dimensions for comparison
-      const width = 320;
-      const height = 240;
-      
-      img1.resize({ w: width, h: height });
-      img2.resize({ w: width, h: height });
-      
-      // Calculate pixel difference
-      const diffResult = diff(img1, img2);
-      return diffResult.percent;
-      
-    } catch (error) {
-      logger.error(`Error comparing frames: ${error}`);
-      return 0;
-    }
-  }
+		// Step 1: Calculate frame differences using multiple methods
+		logger.info("Calculating frame differences...");
+		const differences = await this.calculateFrameDifferences(
+			frames,
+			(progress) => {
+				if (onProgress) onProgress(40 + progress * 0.15); // 40-55%
+			},
+		);
 
-  private createSlide(frames: Frame[]): Slide {
-    const startTime = frames[0].timestamp;
-    const endTime = frames[frames.length - 1].timestamp;
-    
-    return {
-      startTime,
-      endTime,
-      frames,
-      ocrResults: [],
-      primaryText: ''
-    };
-  }
+		// Log some statistics about differences
+		const avgDiff = differences.reduce((a, b) => a + b, 0) / differences.length;
+		const maxDiff = Math.max(...differences);
+		logger.info(
+			`Differences - Avg: ${avgDiff.toFixed(3)}, Max: ${maxDiff.toFixed(3)}`,
+		);
 
-  async getMostRepresentativeFrame(slide: Slide): Promise<Frame> {
-    // For now, return the middle frame
-    // In a more sophisticated implementation, we could compare all frames
-    // and find the one with the most text or clearest image
-    const middleIndex = Math.floor(slide.frames.length / 2);
-    return slide.frames[middleIndex];
-  }
+		// Step 2: Find slide boundaries using adaptive thresholding
+		const boundaries = this.findSlideBoundaries(differences);
+		logger.info(`Found ${boundaries.length} boundaries`);
+		if (onProgress) onProgress(56);
+
+		// Step 3: Create slides from boundaries
+		const slides = this.createSlidesFromBoundaries(frames, boundaries);
+		logger.info(`Created ${slides.length} slides before merging`);
+		if (onProgress) onProgress(58);
+
+		// Step 4: Merge short slides that might be animations
+		const mergedSlides = this.mergeShortSlides(slides);
+
+		logger.info(`Detected ${mergedSlides.length} slides after merging`);
+		if (onProgress) onProgress(60);
+		return mergedSlides;
+	}
+
+	private async calculateFrameDifferences(
+		frames: Frame[],
+		onProgress?: (percent: number) => void,
+	): Promise<number[]> {
+		const differences: number[] = [];
+
+		for (let i = 1; i < frames.length; i++) {
+			if (i % 50 === 0) {
+				logger.info(`Processing frame ${i}/${frames.length}...`);
+			}
+
+			const diff = await this.calculateEnhancedDifference(
+				frames[i - 1].imagePath,
+				frames[i].imagePath,
+			);
+			differences.push(diff);
+
+			if (onProgress && i % 10 === 0) {
+				onProgress(i / frames.length);
+			}
+		}
+
+		return differences;
+	}
+
+	private async calculateEnhancedDifference(
+		path1: string,
+		path2: string,
+	): Promise<number> {
+		try {
+			const [img1, img2] = await Promise.all([
+				Jimp.read(path1),
+				Jimp.read(path2),
+			]);
+
+			// Resize for faster comparison
+			const width = 320;
+			const height = 240;
+
+			img1.resize({ w: width, h: height });
+			img2.resize({ w: width, h: height });
+
+			// Method 1: Pixel difference
+			const pixelDiff = diff(img1, img2).percent;
+
+			// Method 2: Histogram difference
+			const histDiff = this.compareHistograms(img1, img2);
+
+			// Method 3: Edge detection difference (simplified)
+			const edgeDiff = await this.compareEdges(img1, img2);
+
+			// Weighted combination
+			const weightedDiff = pixelDiff * 0.4 + histDiff * 0.3 + edgeDiff * 0.3;
+
+			return weightedDiff;
+		} catch (error) {
+			logger.error(`Error comparing frames: ${error}`);
+			// Propagate the error to ensure proper handling
+			throw new Error(
+				`Failed to compare frames: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+	}
+
+	/**
+	 * Compares two images using chi-squared histogram comparison
+	 *
+	 * Chi-squared distance is a statistical method for comparing color distributions:
+	 * - Creates color histograms (frequency distributions) for RGB channels
+	 * - Measures how different the distributions are between two images
+	 * - Formula: χ² = Σ((hist1[i] - hist2[i])² / (hist1[i] + hist2[i]))
+	 *
+	 * Why it's effective for slide detection:
+	 * - Detects changes even when pixels move but colors remain similar (animations)
+	 * - Robust against minor variations in the same slide
+	 * - Captures overall color composition changes between different slides
+	 * - Works well for presentation slides which often have distinct color schemes
+	 *
+	 * @returns Normalized distance between 0-1 (0 = identical, 1 = completely different)
+	 */
+	private compareHistograms(img1: JimpInstance, img2: JimpInstance): number {
+		const hist1 = this.calculateHistogram(img1);
+		const hist2 = this.calculateHistogram(img2);
+
+		// Calculate chi-squared distance
+		// χ² = Σ((observed - expected)² / expected)
+		// In our case: χ² = Σ((hist1[i] - hist2[i])² / (hist1[i] + hist2[i]))
+		let distance = 0;
+		for (let i = 0; i < hist1.length; i++) {
+			if (hist1[i] + hist2[i] > 0) {
+				// Avoid division by zero when both bins are empty
+				distance += (hist1[i] - hist2[i]) ** 2 / (hist1[i] + hist2[i]);
+			}
+		}
+
+		// Normalize to 0-1 range
+		// The divisor 100 is empirically chosen based on typical chi-squared values
+		return Math.min(distance / 100, 1);
+	}
+
+	private calculateHistogram(img: JimpInstance): number[] {
+		const histogram = new Array(this.histogramBins * 3).fill(0);
+		const binSize = 256 / this.histogramBins;
+
+		img.scan(
+			0,
+			0,
+			img.bitmap.width,
+			img.bitmap.height,
+			(_x: number, _y: number, idx: number) => {
+				const r = img.bitmap.data[idx];
+				const g = img.bitmap.data[idx + 1];
+				const b = img.bitmap.data[idx + 2];
+
+				const rBin = Math.floor(r / binSize);
+				const gBin = Math.floor(g / binSize);
+				const bBin = Math.floor(b / binSize);
+
+				histogram[rBin]++;
+				histogram[this.histogramBins + gBin]++;
+				histogram[this.histogramBins * 2 + bBin]++;
+			},
+		);
+
+		// Normalize
+		const totalPixels = img.bitmap.width * img.bitmap.height;
+		return histogram.map((count) => count / totalPixels);
+	}
+
+	private async compareEdges(
+		img1: JimpInstance,
+		img2: JimpInstance,
+	): Promise<number> {
+		// Simplified edge detection using grayscale gradient
+		const gray1 = img1.clone().greyscale();
+		const gray2 = img2.clone().greyscale();
+
+		let edgeDiff = 0;
+		let pixelCount = 0;
+
+		// Sample every 4th pixel for speed
+		for (let y = 1; y < gray1.bitmap.height - 1; y += 4) {
+			for (let x = 1; x < gray1.bitmap.width - 1; x += 4) {
+				const edge1 = this.getEdgeStrength(gray1, x, y);
+				const edge2 = this.getEdgeStrength(gray2, x, y);
+				edgeDiff += Math.abs(edge1 - edge2);
+				pixelCount++;
+			}
+		}
+
+		return Math.min(edgeDiff / pixelCount / 255, 1);
+	}
+
+	private getEdgeStrength(img: JimpInstance, x: number, y: number): number {
+		const getPixel = (px: number, py: number) => {
+			// Bounds checking to prevent buffer overruns
+			if (
+				px < 0 ||
+				px >= img.bitmap.width ||
+				py < 0 ||
+				py >= img.bitmap.height
+			) {
+				return 0; // Return default value for out-of-bounds coordinates
+			}
+			const idx = (py * img.bitmap.width + px) * 4;
+			return img.bitmap.data[idx];
+		};
+
+		// Sobel operator (simplified)
+		const gx = getPixel(x + 1, y) - getPixel(x - 1, y);
+		const gy = getPixel(x, y + 1) - getPixel(x, y - 1);
+
+		return Math.sqrt(gx * gx + gy * gy);
+	}
+
+	private calculateStatistics(differences: number[]): {
+		percentile25: number;
+		percentile50: number;
+		percentile75: number;
+		mean: number;
+		stdDev: number;
+	} {
+		const sortedDiffs = [...differences].sort((a, b) => a - b);
+		const mean = differences.reduce((a, b) => a + b, 0) / differences.length;
+		const variance =
+			differences.reduce((a, b) => a + (b - mean) ** 2, 0) / differences.length;
+
+		return {
+			percentile25: sortedDiffs[Math.floor(sortedDiffs.length * 0.25)],
+			percentile50: sortedDiffs[Math.floor(sortedDiffs.length * 0.5)],
+			percentile75: sortedDiffs[Math.floor(sortedDiffs.length * 0.75)],
+			mean,
+			stdDev: Math.sqrt(variance),
+		};
+	}
+
+	private calculateThresholds(stats: {
+		percentile25: number;
+		percentile50: number;
+		percentile75: number;
+		mean: number;
+		stdDev: number;
+	}): {
+		conservative: number;
+		moderate: number;
+		aggressive: number;
+		veryAggressive: number;
+	} {
+		const thresholds = {
+			conservative: Math.max(this.threshold, stats.percentile75),
+			moderate: Math.max(this.threshold * 0.8, stats.percentile50 * 1.5),
+			aggressive: Math.max(this.threshold * 0.6, stats.mean + stats.stdDev),
+			veryAggressive: Math.max(this.threshold * 0.4, stats.percentile25 * 2),
+		};
+
+		logger.info(
+			`Thresholds - Conservative: ${thresholds.conservative.toFixed(3)}, ` +
+				`Moderate: ${thresholds.moderate.toFixed(3)}, ` +
+				`Aggressive: ${thresholds.aggressive.toFixed(3)}, ` +
+				`Very Aggressive: ${thresholds.veryAggressive.toFixed(3)}`,
+		);
+
+		return thresholds;
+	}
+
+	private isLocalPeak(
+		differences: number[],
+		index: number,
+		windowSize: number,
+	): boolean {
+		if (index < windowSize || index >= differences.length - windowSize) {
+			return false;
+		}
+
+		const window = differences.slice(
+			index - windowSize,
+			index + windowSize + 1,
+		);
+		const centerValue = differences[index];
+		const windowMax = Math.max(...window);
+
+		return centerValue === windowMax;
+	}
+
+	private findPeakBoundaries(
+		differences: number[],
+		threshold: number,
+		existingBoundaries: number[],
+	): number[] {
+		const boundaries: number[] = [];
+		const windowSize = 3;
+
+		for (let i = windowSize; i < differences.length - windowSize; i++) {
+			if (
+				this.isLocalPeak(differences, i, windowSize) &&
+				differences[i] > threshold
+			) {
+				const lastBoundary =
+					existingBoundaries[existingBoundaries.length - 1] || 0;
+				if (i + 1 - lastBoundary >= 1) {
+					boundaries.push(i + 1);
+					existingBoundaries.push(i + 1);
+				}
+			}
+		}
+
+		return boundaries;
+	}
+
+	private findSustainedHighBoundaries(
+		differences: number[],
+		threshold: number,
+		existingBoundaries: number[],
+	): number[] {
+		const boundaries: number[] = [];
+		let highDiffStart = -1;
+
+		for (let i = 0; i < differences.length; i++) {
+			if (differences[i] > threshold) {
+				if (highDiffStart === -1) {
+					highDiffStart = i;
+				}
+			} else if (highDiffStart !== -1) {
+				const midPoint = Math.floor((highDiffStart + i) / 2);
+				const lastBoundary =
+					existingBoundaries[existingBoundaries.length - 1] || 0;
+
+				if (
+					midPoint + 1 - lastBoundary >= 2 &&
+					!existingBoundaries.includes(midPoint + 1)
+				) {
+					boundaries.push(midPoint + 1);
+					existingBoundaries.push(midPoint + 1);
+				}
+				highDiffStart = -1;
+			}
+		}
+
+		return boundaries;
+	}
+
+	private findSlideBoundaries(differences: number[]): number[] {
+		const boundaries: number[] = [0]; // First frame is always a boundary
+
+		// Calculate statistics and thresholds
+		const stats = this.calculateStatistics(differences);
+		const thresholds = this.calculateThresholds(stats);
+		const activeThreshold = thresholds.veryAggressive;
+
+		// Find boundaries using two methods
+		const peakBoundaries = this.findPeakBoundaries(
+			differences,
+			activeThreshold,
+			[...boundaries],
+		);
+		boundaries.push(...peakBoundaries);
+
+		const sustainedBoundaries = this.findSustainedHighBoundaries(
+			differences,
+			activeThreshold,
+			[...boundaries],
+		);
+		boundaries.push(...sustainedBoundaries);
+
+		// Sort and deduplicate
+		const uniqueBoundaries = [...new Set(boundaries)].sort((a, b) => a - b);
+
+		// Add last frame if not already there
+		if (uniqueBoundaries[uniqueBoundaries.length - 1] !== differences.length) {
+			uniqueBoundaries.push(differences.length);
+		}
+
+		logger.info(
+			`Active threshold: ${activeThreshold.toFixed(3)}, Found ${uniqueBoundaries.length} boundaries`,
+		);
+
+		return uniqueBoundaries;
+	}
+
+	private createSlidesFromBoundaries(
+		frames: Frame[],
+		boundaries: number[],
+	): Slide[] {
+		const slides: Slide[] = [];
+
+		for (let i = 0; i < boundaries.length - 1; i++) {
+			const start = boundaries[i];
+			const end = boundaries[i + 1];
+			const slideFrames = frames.slice(start, end);
+
+			if (slideFrames.length >= this.minSlideFrames) {
+				slides.push({
+					startTime: slideFrames[0].timestamp,
+					endTime: slideFrames[slideFrames.length - 1].timestamp,
+					frames: slideFrames,
+					ocrResults: [],
+					primaryText: "",
+				});
+			}
+		}
+
+		return slides;
+	}
+
+	private mergeShortSlides(slides: Slide[]): Slide[] {
+		const merged: Slide[] = [];
+		let i = 0;
+
+		while (i < slides.length) {
+			const current = slides[i];
+			const duration = current.endTime - current.startTime;
+
+			// If slide is extremely short (less than 1 second), try to merge
+			if (duration < 1 && i < slides.length - 1) {
+				const next = slides[i + 1];
+				const nextDuration = next.endTime - next.startTime;
+
+				// Only merge if next slide is also very short and likely a transition
+				if (nextDuration < 1) {
+					merged.push({
+						startTime: current.startTime,
+						endTime: next.endTime,
+						frames: [...current.frames, ...next.frames],
+						ocrResults: [],
+						primaryText: "",
+					});
+					i += 2;
+					continue;
+				}
+			}
+
+			merged.push(current);
+			i++;
+		}
+
+		return merged;
+	}
+
+	async getMostRepresentativeFrame(slide: Slide): Promise<Frame> {
+		// Return the middle frame of the slide
+		const middleIndex = Math.floor(slide.frames.length / 2);
+		return slide.frames[middleIndex];
+	}
 }

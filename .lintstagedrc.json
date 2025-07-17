@@ -1,0 +1,16 @@
+{
+	"*.{ts,tsx,js,jsx}": [
+		"pnpm run format --no-errors-on-unmatched",
+		"pnpm run lint:fix --no-errors-on-unmatched",
+		"./scripts/add-newline.sh"
+	],
+	"*.{json,md,yml,yaml}": [
+		"pnpm run format --no-errors-on-unmatched",
+		"./scripts/add-newline.sh"
+	],
+	"package.json": [
+		"pnpm run format --no-errors-on-unmatched",
+		"./scripts/add-newline.sh"
+	],
+	"*.sh": ["./scripts/add-newline.sh"]
+}

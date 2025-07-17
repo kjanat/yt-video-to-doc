@@ -1,0 +1,13 @@
+#!/bin/sh
+
+# Check for Claude Code signature
+if grep -q "🤖 Generated with \[Claude Code\]" "$1" || grep -q "Co-Authored-By: Claude <noreply@anthropic.com>" "$1"; then
+  echo "❌ Error: Commit message contains Claude Code signature."
+  echo "   Please remove the following lines from your commit message:"
+  echo "   - 🤖 Generated with [Claude Code](https://claude.ai/code)"
+  echo "   - Co-Authored-By: Claude <noreply@anthropic.com>"
+  exit 1
+fi
+
+# Run commitlint
+pnpm exec commitlint --edit $1
