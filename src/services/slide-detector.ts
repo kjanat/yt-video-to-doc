@@ -1,7 +1,25 @@
 import { diff, Jimp } from "jimp";
 import type { Frame, Slide } from "../types";
-import type { JimpInstance } from "../types/jimp";
 import logger from "../utils/logger";
+
+// Extend JimpClass with the plugin methods we use
+interface JimpInstance {
+	clone(): JimpInstance;
+	greyscale(): JimpInstance;
+	bitmap: {
+		width: number;
+		height: number;
+		data: Buffer;
+	};
+	scan(
+		x: number,
+		y: number,
+		w: number,
+		h: number,
+		cb: (x: number, y: number, idx: number) => void,
+	): void;
+	resize(options: { w: number; h: number }): void;
+}
 
 export class SlideDetector {
 	private threshold: number;

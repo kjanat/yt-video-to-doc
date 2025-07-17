@@ -185,3 +185,5 @@ frames/
 # OS
 .DS_Store
 Thumbs.db
+
+*.backup
