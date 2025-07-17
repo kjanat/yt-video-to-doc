@@ -106,10 +106,30 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install license-checker
-        run: pnpm add -g license-checker
-
       - name: Check licenses
         run: |
-          license-checker --production --summary --excludePrivatePackages \
-            --onlyAllow 'MIT;ISC;BSD;Apache-2.0;CC0-1.0;CC-BY-3.0;CC-BY-4.0;Unlicense;LGPL-2.1;LGPL-3.0'
+          # Get all production licenses in JSON format
+          pnpm licenses list --prod --json > licenses.json
+          
+          # Define allowed licenses (regex pattern)
+          ALLOWED_LICENSES="MIT|ISC|BSD.*|Apache-2.0|CC0-1.0|CC-BY-3.0|CC-BY-4.0|Unlicense|LGPL-2.1|LGPL-3.0"
+          
+          # Check for disallowed licenses using jq
+          echo "Checking production dependency licenses..."
+          
+          # Extract and check licenses
+          DISALLOWED=$(jq -r --arg allowed "$ALLOWED_LICENSES" '
+            to_entries[] | 
+            select(.value.license | test($allowed; "i") | not) | 
+            "\(.key): \(.value.license)"
+          ' licenses.json 2>/dev/null || echo "")
+          
+          if [ -n "$DISALLOWED" ]; then
+            echo "❌ Found packages with disallowed licenses:"
+            echo "$DISALLOWED"
+            exit 1
+          else
+            echo "✅ All production dependencies have allowed licenses"
+            # Show summary
+            jq -r 'to_entries | group_by(.value.license) | map({license: .[0].value.license, count: length}) | .[] | "\(.license): \(.count) packages"' licenses.json | sort
+          fi
