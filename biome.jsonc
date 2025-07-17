@@ -8,7 +8,7 @@
 	},
 	"files": {
 		"ignoreUnknown": true,
-		"includes": ["src/**/*", "biome.jsonc", "package.json"]
+		"includes": ["*.{js,ts,cjs,mjs,d.cts,d.mts,jsx,tsx,json,jsonc}", "src/**/*"]
 	},
 	"formatter": {
 		"enabled": true,

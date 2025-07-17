@@ -179,8 +179,27 @@ frames/
 *.docx
 
 # IDE
-.vscode/
 .idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# VS Code - allow workspace settings but not user settings
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+.history/
+*.vsix
 
 # OS
 .DS_Store
@@ -191,3 +210,37 @@ Thumbs.db
 # Test/debug files
 test-quick.js
 conversion.log
+
+# Build artifacts
+*.tgz
+*.tar.gz
+
+# Debug logs
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment files
+.env*
+!.env.example
+!.env.template
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.cache
+*.pid
+*.seed
+*.pid.lock
+
+# Test coverage
+coverage/
+.nyc_output/
+*.lcov
+
+# Benchmarking
+benchmarks/results
+
+# Local development
+.local/
+*.local
